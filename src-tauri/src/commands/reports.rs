@@ -6,7 +6,12 @@ use tauri::State;
 
 // All date ranges are inclusive local dates in `YYYY-MM-DD` form.
 
-fn query<T, P: Params>(db: &Connection, sql: &str, params: P, f: impl FnMut(&Row) -> rusqlite::Result<T>) -> AppResult<Vec<T>> {
+fn query<T, P: Params>(
+    db: &Connection,
+    sql: &str,
+    params: P,
+    f: impl FnMut(&Row) -> rusqlite::Result<T>,
+) -> AppResult<Vec<T>> {
     let mut stmt = db.prepare(sql)?;
     let rows = stmt.query_map(params, f)?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -58,9 +63,24 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         "SELECT payment_method, COUNT(*), SUM(total) FROM sales
          WHERE date(created_at) BETWEEN ?1 AND ?2 GROUP BY payment_method ORDER BY SUM(total) DESC",
         [&from, &to],
-        |r| Ok(PaymentTotal { method: r.get(0)?, count: r.get(1)?, total: r.get(2)? }),
+        |r| {
+            Ok(PaymentTotal {
+                method: r.get(0)?,
+                count: r.get(1)?,
+                total: r.get(2)?,
+            })
+        },
     )?;
-    Ok(Summary { sales_count, revenue, cost, profit: revenue - cost, grams_sold, purchases_cost, purchases_grams, by_payment })
+    Ok(Summary {
+        sales_count,
+        revenue,
+        cost,
+        profit: revenue - cost,
+        grams_sold,
+        purchases_cost,
+        purchases_grams,
+        by_payment,
+    })
 }
 
 #[derive(Serialize)]
@@ -80,7 +100,14 @@ pub fn report_daily(state: State<AppState>, from: String, to: String) -> AppResu
         "SELECT date(created_at) d, COUNT(*), SUM(total), SUM(total - cost_total) FROM sales
          WHERE date(created_at) BETWEEN ?1 AND ?2 GROUP BY d ORDER BY d",
         [&from, &to],
-        |r| Ok(DailyRow { day: r.get(0)?, sales_count: r.get(1)?, revenue: r.get(2)?, profit: r.get(3)? }),
+        |r| {
+            Ok(DailyRow {
+                day: r.get(0)?,
+                sales_count: r.get(1)?,
+                revenue: r.get(2)?,
+                profit: r.get(3)?,
+            })
+        },
     )
 }
 
@@ -97,7 +124,11 @@ pub struct ProductRow {
 }
 
 #[tauri::command]
-pub fn report_by_product(state: State<AppState>, from: String, to: String) -> AppResult<Vec<ProductRow>> {
+pub fn report_by_product(
+    state: State<AppState>,
+    from: String,
+    to: String,
+) -> AppResult<Vec<ProductRow>> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     query(
@@ -141,7 +172,11 @@ pub struct CategoryRow {
 
 /// Per leaf category; the frontend rolls sub-categories up into their parent when needed.
 #[tauri::command]
-pub fn report_by_category(state: State<AppState>, from: String, to: String) -> AppResult<Vec<CategoryRow>> {
+pub fn report_by_category(
+    state: State<AppState>,
+    from: String,
+    to: String,
+) -> AppResult<Vec<CategoryRow>> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     query(
@@ -181,7 +216,11 @@ pub struct CashierRow {
 }
 
 #[tauri::command]
-pub fn report_by_cashier(state: State<AppState>, from: String, to: String) -> AppResult<Vec<CashierRow>> {
+pub fn report_by_cashier(
+    state: State<AppState>,
+    from: String,
+    to: String,
+) -> AppResult<Vec<CashierRow>> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     query(
@@ -219,7 +258,12 @@ pub struct MovementRow {
 }
 
 #[tauri::command]
-pub fn report_movements(state: State<AppState>, from: String, to: String, reason: Option<String>) -> AppResult<Vec<MovementRow>> {
+pub fn report_movements(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    reason: Option<String>,
+) -> AppResult<Vec<MovementRow>> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     query(

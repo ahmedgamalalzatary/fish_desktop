@@ -25,10 +25,16 @@ pub fn add_purchase(
          VALUES (?1, ?2, 'purchase', ?3, ?4, ?5, ?6)",
         params![product_id, grams, cost_total, note.filter(|n| !n.trim().is_empty()), user.id, now()],
     )?;
-    tx.execute("UPDATE products SET stock_grams = stock_grams + ?1 WHERE id = ?2", params![grams, product_id])?;
+    tx.execute(
+        "UPDATE products SET stock_grams = stock_grams + ?1 WHERE id = ?2",
+        params![grams, product_id],
+    )?;
     if update_cost {
         let per_kg = (cost_total as f64 * 1000.0 / grams as f64).round() as i64;
-        tx.execute("UPDATE products SET cost_per_kg = ?1 WHERE id = ?2", params![per_kg, product_id])?;
+        tx.execute(
+            "UPDATE products SET cost_per_kg = ?1 WHERE id = ?2",
+            params![per_kg, product_id],
+        )?;
     }
     tx.commit()?;
     Ok(())
@@ -36,14 +42,23 @@ pub fn add_purchase(
 
 /// Sets stock to a counted value (e.g. after a stock-take or spoilage) and logs the difference.
 #[tauri::command]
-pub fn adjust_stock(state: State<AppState>, product_id: i64, new_grams: i64, note: Option<String>) -> AppResult<()> {
+pub fn adjust_stock(
+    state: State<AppState>,
+    product_id: i64,
+    new_grams: i64,
+    note: Option<String>,
+) -> AppResult<()> {
     let user = state.admin()?;
     if new_grams < 0 {
         return invalid("الكمية لا يمكن أن تكون سالبة");
     }
     let mut db = state.db.lock().unwrap();
     let tx = db.transaction()?;
-    let current: i64 = tx.query_row("SELECT stock_grams FROM products WHERE id = ?1", [product_id], |r| r.get(0))?;
+    let current: i64 = tx.query_row(
+        "SELECT stock_grams FROM products WHERE id = ?1",
+        [product_id],
+        |r| r.get(0),
+    )?;
     let diff = new_grams - current;
     if diff == 0 {
         return Ok(());
@@ -51,9 +66,18 @@ pub fn adjust_stock(state: State<AppState>, product_id: i64, new_grams: i64, not
     tx.execute(
         "INSERT INTO stock_movements (product_id, change_grams, reason, note, user_id, created_at)
          VALUES (?1, ?2, 'adjustment', ?3, ?4, ?5)",
-        params![product_id, diff, note.filter(|n| !n.trim().is_empty()), user.id, now()],
+        params![
+            product_id,
+            diff,
+            note.filter(|n| !n.trim().is_empty()),
+            user.id,
+            now()
+        ],
     )?;
-    tx.execute("UPDATE products SET stock_grams = ?1 WHERE id = ?2", params![new_grams, product_id])?;
+    tx.execute(
+        "UPDATE products SET stock_grams = ?1 WHERE id = ?2",
+        params![new_grams, product_id],
+    )?;
     tx.commit()?;
     Ok(())
 }

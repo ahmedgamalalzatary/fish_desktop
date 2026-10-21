@@ -30,3 +30,8 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Must match the versions used by wry, so PrintToPdf works on the same COM objects.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = "0.62"

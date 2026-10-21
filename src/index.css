@@ -1,0 +1,27 @@
+@import "@fontsource-variable/readex-pro";
+@import "@fontsource/lalezar";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Readex Pro Variable", system-ui, sans-serif;
+  --font-sign: "Lalezar", "Readex Pro Variable", sans-serif;
+
+  /* Counter-top ice and deep-sea ink; yellow is reserved for prices and the pay action. */
+  --color-ice: #eef3f3;
+  --color-frost: #f8fbfb;
+  --color-line: #d5e0e1;
+  --color-mist: #5e7880;
+  --color-ink: #0f2b33;
+  --color-ink-2: #1b3f49;
+  --color-ink-3: #2c5561;
+  --color-tag: #f4c430;
+  --color-tag-deep: #c99a0e;
+  --color-kelp: #2e7d6f;
+  --color-kelp-soft: #dcefeb;
+  --color-gill: #c2413a;
+  --color-gill-soft: #f8e1df;
+  /* Chart marks: validated sea blue (lightness, chroma, contrast vs white). */
+  --color-sea: #1a7fb0;
+  --color-lcd: #0b2128;
+  --color-lcd-glow: #9fe8e0;
+}

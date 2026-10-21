@@ -1,51 +1,55 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState } from "react";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Shell } from "./components/Shell";
+import { api } from "./lib/api";
+import { SessionProvider } from "./lib/session";
+import type { SessionUser } from "./lib/types";
+import { CategoriesPage } from "./pages/CategoriesPage";
+import { EmployeesPage } from "./pages/EmployeesPage";
+import { LoginPage } from "./pages/LoginPage";
+import { PosPage } from "./pages/PosPage";
+import { ProductsPage } from "./pages/ProductsPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { StockPage } from "./pages/StockPage";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export default function App() {
+  const [state, setState] = useState<{ user: SessionUser | null; needsSetup: boolean } | null>(null);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  useEffect(() => {
+    Promise.all([api.currentUser(), api.needsSetup()]).then(([user, needsSetup]) =>
+      setState({ user, needsSetup }),
+    );
+  }, []);
+
+  if (!state) return null;
+  if (!state.user) {
+    return (
+      <LoginPage firstRun={state.needsSetup} onLogin={(user) => setState({ user, needsSetup: false })} />
+    );
   }
 
+  const isAdmin = state.user.role === "admin";
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <SessionProvider user={state.user} onLogout={() => setState({ user: null, needsSetup: false })}>
+      <HashRouter>
+        <Shell>
+          <Routes>
+            <Route path="/pos" element={<PosPage />} />
+            {isAdmin && (
+              <>
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+                <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/stock" element={<StockPage />} />
+                <Route path="/employees" element={<EmployeesPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </>
+            )}
+            <Route path="*" element={<Navigate to={isAdmin ? "/reports" : "/pos"} replace />} />
+          </Routes>
+        </Shell>
+      </HashRouter>
+    </SessionProvider>
   );
 }
-
-export default App;

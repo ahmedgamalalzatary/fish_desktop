@@ -72,7 +72,11 @@ pub fn create_sale(
     let mut db = state.db.lock().unwrap();
     let tx = db.transaction()?;
     let allow_negative = tx
-        .query_row("SELECT value FROM settings WHERE key = 'allow_negative_stock'", [], |r| r.get::<_, String>(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'allow_negative_stock'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
         .optional()?
         .is_some_and(|v| v == "1");
 
@@ -103,14 +107,37 @@ pub fn create_sale(
                     )
                     .optional()?
                     .ok_or(AppError::NotFound("الوزن المحدد"))?;
-                (item.product_id, Some(variant_id), name, Some(label), item.quantity, weight * item.quantity, price, price * item.quantity, cost * item.quantity)
+                (
+                    item.product_id,
+                    Some(variant_id),
+                    name,
+                    Some(label),
+                    item.quantity,
+                    weight * item.quantity,
+                    price,
+                    price * item.quantity,
+                    cost * item.quantity,
+                )
             }
             None => {
                 if !sell_by_weight {
                     return invalid(format!("المنتج «{name}» لا يُباع بالكيلو"));
                 }
-                let grams = item.weight_grams.filter(|g| *g > 0).ok_or_else(|| AppError::Invalid("أدخل وزناً صحيحاً".into()))?;
-                (item.product_id, None, name, None, 1, grams, price_per_kg, price_for_grams(price_per_kg, grams), price_for_grams(cost_per_kg, grams))
+                let grams = item
+                    .weight_grams
+                    .filter(|g| *g > 0)
+                    .ok_or_else(|| AppError::Invalid("أدخل وزناً صحيحاً".into()))?;
+                (
+                    item.product_id,
+                    None,
+                    name,
+                    None,
+                    1,
+                    grams,
+                    price_per_kg,
+                    price_for_grams(price_per_kg, grams),
+                    price_for_grams(cost_per_kg, grams),
+                )
             }
         };
         *needed.entry(item.product_id).or_default() += line.5;
@@ -119,8 +146,11 @@ pub fn create_sale(
 
     if !allow_negative {
         for (product_id, grams) in &needed {
-            let (name, stock): (String, i64) =
-                tx.query_row("SELECT name, stock_grams FROM products WHERE id = ?1", [product_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let (name, stock): (String, i64) = tx.query_row(
+                "SELECT name, stock_grams FROM products WHERE id = ?1",
+                [product_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
             if stock < *grams {
                 return invalid(format!(
                     "المخزون غير كافٍ من «{name}»: المتوفر {:.3} كجم والمطلوب {:.3} كجم",
@@ -133,7 +163,11 @@ pub fn create_sale(
 
     let total: i64 = lines.iter().map(|l| l.7).sum();
     let cost_total: i64 = lines.iter().map(|l| l.8).sum();
-    let paid = if payment_method == "cash" { paid } else { total };
+    let paid = if payment_method == "cash" {
+        paid
+    } else {
+        total
+    };
     if paid < total {
         return invalid("المبلغ المدفوع أقل من الإجمالي");
     }
@@ -144,7 +178,9 @@ pub fn create_sale(
         params![user.id, ts, total, cost_total, payment_method, paid, paid - total],
     )?;
     let sale_id = tx.last_insert_rowid();
-    for (product_id, variant_id, name, label, qty, grams, unit_price, line_total, line_cost) in &lines {
+    for (product_id, variant_id, name, label, qty, grams, unit_price, line_total, line_cost) in
+        &lines
+    {
         tx.execute(
             "INSERT INTO sale_items (sale_id, product_id, variant_id, product_name, variant_label, quantity, weight_grams, unit_price, line_total, line_cost)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -152,7 +188,10 @@ pub fn create_sale(
         )?;
     }
     for (product_id, grams) in &needed {
-        tx.execute("UPDATE products SET stock_grams = stock_grams - ?1 WHERE id = ?2", params![grams, product_id])?;
+        tx.execute(
+            "UPDATE products SET stock_grams = stock_grams - ?1 WHERE id = ?2",
+            params![grams, product_id],
+        )?;
         tx.execute(
             "INSERT INTO stock_movements (product_id, change_grams, reason, sale_id, user_id, created_at)
              VALUES (?1, ?2, 'sale', ?3, ?4, ?5)",
@@ -209,7 +248,11 @@ pub fn get_sale(state: State<AppState>, id: i64) -> AppResult<Sale> {
     let user = state.user()?;
     let db = state.db.lock().unwrap();
     if !user.is_admin() {
-        let owner: Option<i64> = db.query_row("SELECT user_id FROM sales WHERE id = ?1", [id], |r| r.get(0)).optional()?;
+        let owner: Option<i64> = db
+            .query_row("SELECT user_id FROM sales WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
         if owner != Some(user.id) {
             return Err(AppError::Forbidden);
         }
@@ -219,7 +262,12 @@ pub fn get_sale(state: State<AppState>, id: i64) -> AppResult<Sale> {
 
 /// Dates are inclusive `YYYY-MM-DD`. Cashiers always get only their own sales for today.
 #[tauri::command]
-pub fn list_sales(state: State<AppState>, from: String, to: String, user_id: Option<i64>) -> AppResult<Vec<SaleSummary>> {
+pub fn list_sales(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    user_id: Option<i64>,
+) -> AppResult<Vec<SaleSummary>> {
     let user = state.user()?;
     let (from, to, user_id) = if user.is_admin() {
         (from, to, user_id)

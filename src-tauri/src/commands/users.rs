@@ -40,10 +40,10 @@ impl UserInput {
 }
 
 fn map_unique(e: rusqlite::Error) -> crate::error::AppError {
-    if let rusqlite::Error::SqliteFailure(f, _) = &e {
-        if f.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE {
-            return crate::error::AppError::Invalid("اسم المستخدم مستخدم بالفعل".into());
-        }
+    if let rusqlite::Error::SqliteFailure(f, _) = &e
+        && f.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    {
+        return crate::error::AppError::Invalid("اسم المستخدم مستخدم بالفعل".into());
     }
     e.into()
 }
@@ -55,7 +55,11 @@ fn ensure_other_admin(db: &Connection, user_id: i64) -> AppResult<()> {
         [user_id],
         |r| r.get(0),
     )?;
-    if others == 0 { invalid("يجب أن يبقى مدير واحد نشط على الأقل") } else { Ok(()) }
+    if others == 0 {
+        invalid("يجب أن يبقى مدير واحد نشط على الأقل")
+    } else {
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -108,11 +112,20 @@ pub fn update_user(state: State<AppState>, id: i64, input: UserInput) -> AppResu
     }
     db.execute(
         "UPDATE users SET name = ?1, username = ?2, role = ?3, active = ?4 WHERE id = ?5",
-        params![input.name.trim(), input.username.trim(), input.role, input.active, id],
+        params![
+            input.name.trim(),
+            input.username.trim(),
+            input.role,
+            input.active,
+            id
+        ],
     )
     .map_err(map_unique)?;
     if let Some(pw) = input.password.as_deref().filter(|p| !p.is_empty()) {
-        db.execute("UPDATE users SET password_hash = ?1 WHERE id = ?2", params![hash_password(pw)?, id])?;
+        db.execute(
+            "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+            params![hash_password(pw)?, id],
+        )?;
     }
     Ok(())
 }

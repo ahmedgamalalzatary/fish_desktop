@@ -23,7 +23,12 @@ pub fn list_categories(state: State<AppState>) -> AppResult<Vec<Category>> {
          FROM categories c ORDER BY c.name",
     )?;
     let rows = stmt.query_map([], |r| {
-        Ok(Category { id: r.get(0)?, name: r.get(1)?, parent_id: r.get(2)?, product_count: r.get(3)? })
+        Ok(Category {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            parent_id: r.get(2)?,
+            product_count: r.get(3)?,
+        })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -33,21 +38,33 @@ fn validate(db: &Connection, id: Option<i64>, name: &str, parent_id: Option<i64>
     if name.trim().is_empty() {
         return invalid("اسم التصنيف مطلوب");
     }
-    let Some(parent) = parent_id else { return Ok(()) };
+    let Some(parent) = parent_id else {
+        return Ok(());
+    };
     if Some(parent) == id {
         return invalid("لا يمكن أن يكون التصنيف تابعاً لنفسه");
     }
-    let grandparent: Option<Option<i64>> =
-        db.query_row("SELECT parent_id FROM categories WHERE id = ?1", [parent], |r| r.get(0)).optional()?;
+    let grandparent: Option<Option<i64>> = db
+        .query_row(
+            "SELECT parent_id FROM categories WHERE id = ?1",
+            [parent],
+            |r| r.get(0),
+        )
+        .optional()?;
     match grandparent {
         None => invalid("التصنيف الرئيسي غير موجود"),
         Some(Some(_)) => invalid("لا يمكن إضافة تصنيف فرعي داخل تصنيف فرعي"),
         Some(None) => {
             if let Some(id) = id {
-                let children: i64 =
-                    db.query_row("SELECT COUNT(*) FROM categories WHERE parent_id = ?1", [id], |r| r.get(0))?;
+                let children: i64 = db.query_row(
+                    "SELECT COUNT(*) FROM categories WHERE parent_id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
                 if children > 0 {
-                    return invalid("هذا التصنيف يحتوي على تصنيفات فرعية ولا يمكن نقله تحت تصنيف آخر");
+                    return invalid(
+                        "هذا التصنيف يحتوي على تصنيفات فرعية ولا يمكن نقله تحت تصنيف آخر",
+                    );
                 }
             }
             Ok(())
@@ -56,7 +73,11 @@ fn validate(db: &Connection, id: Option<i64>, name: &str, parent_id: Option<i64>
 }
 
 #[tauri::command]
-pub fn create_category(state: State<AppState>, name: String, parent_id: Option<i64>) -> AppResult<i64> {
+pub fn create_category(
+    state: State<AppState>,
+    name: String,
+    parent_id: Option<i64>,
+) -> AppResult<i64> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     validate(&db, None, &name, parent_id)?;
@@ -68,11 +89,19 @@ pub fn create_category(state: State<AppState>, name: String, parent_id: Option<i
 }
 
 #[tauri::command]
-pub fn update_category(state: State<AppState>, id: i64, name: String, parent_id: Option<i64>) -> AppResult<()> {
+pub fn update_category(
+    state: State<AppState>,
+    id: i64,
+    name: String,
+    parent_id: Option<i64>,
+) -> AppResult<()> {
     state.admin()?;
     let db = state.db.lock().unwrap();
     validate(&db, Some(id), &name, parent_id)?;
-    db.execute("UPDATE categories SET name = ?1, parent_id = ?2 WHERE id = ?3", params![name.trim(), parent_id, id])?;
+    db.execute(
+        "UPDATE categories SET name = ?1, parent_id = ?2 WHERE id = ?3",
+        params![name.trim(), parent_id, id],
+    )?;
     Ok(())
 }
 

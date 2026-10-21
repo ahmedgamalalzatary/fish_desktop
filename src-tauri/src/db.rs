@@ -127,3 +127,30 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 pub fn now() -> String {
     chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_a_fresh_database_and_is_idempotent() {
+        let path = std::env::temp_dir().join(format!("fish-pos-test-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        drop(open(&path).unwrap());
+        let conn = open(&path).unwrap();
+        let version: usize = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len());
+        let currency: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'currency'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(currency, "ج.م");
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
+}

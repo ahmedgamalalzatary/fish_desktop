@@ -45,6 +45,7 @@ pub fn run() {
             settings::get_settings,
             settings::update_settings,
             settings::backup_database,
+            pdf::export_pdf,
             reports::report_summary,
             reports::report_daily,
             reports::report_by_product,

@@ -24,15 +24,26 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(conn: Connection) -> Self {
-        Self { db: Mutex::new(conn), session: Mutex::new(None) }
+        Self {
+            db: Mutex::new(conn),
+            session: Mutex::new(None),
+        }
     }
 
     pub fn user(&self) -> AppResult<SessionUser> {
-        self.session.lock().unwrap().clone().ok_or(AppError::Unauthorized)
+        self.session
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or(AppError::Unauthorized)
     }
 
     pub fn admin(&self) -> AppResult<SessionUser> {
         let user = self.user()?;
-        if user.is_admin() { Ok(user) } else { Err(AppError::Forbidden) }
+        if user.is_admin() {
+            Ok(user)
+        } else {
+            Err(AppError::Forbidden)
+        }
     }
 }

@@ -67,7 +67,11 @@ impl ProductInput {
     }
 }
 
-pub fn load_products(db: &Connection, include_inactive: bool, hide_cost: bool) -> AppResult<Vec<Product>> {
+pub fn load_products(
+    db: &Connection,
+    include_inactive: bool,
+    hide_cost: bool,
+) -> AppResult<Vec<Product>> {
     let mut variants: HashMap<i64, Vec<Variant>> = HashMap::new();
     let mut stmt = db.prepare(
         "SELECT product_id, id, label, weight_grams, price, cost FROM product_variants
@@ -125,8 +129,11 @@ pub fn list_products(state: State<AppState>, include_inactive: bool) -> AppResul
 fn save_variants(tx: &Connection, product_id: i64, variants: &[Variant]) -> AppResult<()> {
     // Variants that disappeared from the form are deactivated, not deleted: past sales reference them.
     let keep: Vec<i64> = variants.iter().filter_map(|v| v.id).collect();
-    let mut stmt = tx.prepare("SELECT id FROM product_variants WHERE product_id = ?1 AND active = 1")?;
-    let existing: Vec<i64> = stmt.query_map([product_id], |r| r.get(0))?.collect::<Result<_, _>>()?;
+    let mut stmt =
+        tx.prepare("SELECT id FROM product_variants WHERE product_id = ?1 AND active = 1")?;
+    let existing: Vec<i64> = stmt
+        .query_map([product_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
     for id in existing.iter().filter(|id| !keep.contains(id)) {
         tx.execute("UPDATE product_variants SET active = 0 WHERE id = ?1", [id])?;
     }
@@ -210,6 +217,10 @@ pub fn delete_product(state: State<AppState>, id: i64) -> AppResult<&'static str
 #[tauri::command]
 pub fn restore_product(state: State<AppState>, id: i64) -> AppResult<()> {
     state.admin()?;
-    state.db.lock().unwrap().execute("UPDATE products SET active = 1 WHERE id = ?1", [id])?;
+    state
+        .db
+        .lock()
+        .unwrap()
+        .execute("UPDATE products SET active = 1 WHERE id = ?1", [id])?;
     Ok(())
 }

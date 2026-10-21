@@ -1,8 +1,8 @@
 use crate::db::now;
 use crate::error::{AppError, AppResult, invalid};
 use crate::state::{AppState, SessionUser};
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rusqlite::{OptionalExtension, params};
 use tauri::State;
 
@@ -19,7 +19,11 @@ pub fn hash_password(password: &str) -> AppResult<String> {
 
 fn verify_password(password: &str, hash: &str) -> bool {
     PasswordHash::new(hash)
-        .map(|h| Argon2::default().verify_password(password.as_bytes(), &h).is_ok())
+        .map(|h| {
+            Argon2::default()
+                .verify_password(password.as_bytes(), &h)
+                .is_ok()
+        })
         .unwrap_or(false)
 }
 
@@ -52,7 +56,12 @@ pub fn setup_admin(
         "INSERT INTO users (name, username, password_hash, role, created_at) VALUES (?1, ?2, ?3, 'admin', ?4)",
         params![name, username, hash, now()],
     )?;
-    let user = SessionUser { id: db.last_insert_rowid(), name, username, role: "admin".into() };
+    let user = SessionUser {
+        id: db.last_insert_rowid(),
+        name,
+        username,
+        role: "admin".into(),
+    };
     *state.session.lock().unwrap() = Some(user.clone());
     Ok(user)
 }
@@ -92,14 +101,24 @@ pub fn current_user(state: State<AppState>) -> Option<SessionUser> {
 }
 
 #[tauri::command]
-pub fn change_password(state: State<AppState>, current: String, new_password: String) -> AppResult<()> {
+pub fn change_password(
+    state: State<AppState>,
+    current: String,
+    new_password: String,
+) -> AppResult<()> {
     let user = state.user()?;
     let db = state.db.lock().unwrap();
-    let hash: String =
-        db.query_row("SELECT password_hash FROM users WHERE id = ?1", [user.id], |r| r.get(0))?;
+    let hash: String = db.query_row(
+        "SELECT password_hash FROM users WHERE id = ?1",
+        [user.id],
+        |r| r.get(0),
+    )?;
     if !verify_password(&current, &hash) {
         return invalid("كلمة المرور الحالية غير صحيحة");
     }
-    db.execute("UPDATE users SET password_hash = ?1 WHERE id = ?2", params![hash_password(&new_password)?, user.id])?;
+    db.execute(
+        "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+        params![hash_password(&new_password)?, user.id],
+    )?;
     Ok(())
 }

@@ -3,7 +3,14 @@ use crate::state::AppState;
 use std::collections::HashMap;
 use tauri::State;
 
-const KEYS: &[&str] = &["shop_name", "shop_phone", "shop_address", "receipt_footer", "currency", "allow_negative_stock"];
+const KEYS: &[&str] = &[
+    "shop_name",
+    "shop_phone",
+    "shop_address",
+    "receipt_footer",
+    "currency",
+    "allow_negative_stock",
+];
 
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> AppResult<HashMap<String, String>> {
@@ -23,7 +30,10 @@ pub fn update_settings(state: State<AppState>, values: HashMap<String, String>) 
         if !KEYS.contains(&key.as_str()) {
             return invalid(format!("إعداد غير معروف: {key}"));
         }
-        tx.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", [key, value.trim()])?;
+        tx.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            [key, value.trim()],
+        )?;
     }
     tx.commit()?;
     Ok(())
