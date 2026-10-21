@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAmount, formatWeight, isoDate, parseKg, parseMoney, priceForGrams } from "./format";
+import { formatAmount, formatWeight, isoDate, parseKg, parseMoney, priceForGrams } from "../src/lib/format";
 
 describe("parseMoney", () => {
   it("converts typed amounts to cents", () => {

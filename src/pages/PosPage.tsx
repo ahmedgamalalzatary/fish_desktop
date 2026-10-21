@@ -385,13 +385,15 @@ function ProductTag({
       <div className="mt-0.5 text-lg leading-7 font-semibold">{p.name}</div>
 
       <div className="mt-auto flex items-end justify-between gap-2 pt-4">
-        <div
-          className={cx(
-            "text-xs",
-            out ? "font-medium text-gill" : low ? "font-medium text-gill" : "text-mist",
+        <div className={cx("text-xs leading-5", out || low ? "font-medium text-gill" : "text-mist")}>
+          {out ? (
+            "نفد المخزون"
+          ) : (
+            <>
+              {low && <div>منخفض</div>}
+              {formatWeight(available)}
+            </>
           )}
-        >
-          {out ? "نفد المخزون" : `${low ? "منخفض · " : ""}${formatWeight(available)}`}
         </div>
 
         <div className="relative -me-1 rounded-md bg-tag px-2.5 py-1.5 text-ink shadow-[0_1px_0_var(--color-tag-deep)]">
@@ -658,15 +660,15 @@ function CheckoutModal({
                 unit={settings.currency}
                 className={change < 0 ? "text-[#ff9b93]" : ""}
               />
-              <div className="flex gap-2">
-                <Button tone="outline" className="flex-1 justify-center" onClick={() => setPaidText("")}>
+              <div className="grid grid-cols-2 gap-2">
+                <Button tone="outline" className="justify-center" onClick={() => setPaidText("")}>
                   المبلغ بالضبط
                 </Button>
                 {suggestions.map((s) => (
                   <Button
                     key={s}
                     tone="outline"
-                    className="flex-1 justify-center"
+                    className="justify-center"
                     onClick={() => setPaidText(String(s / 100))}
                   >
                     {s / 100}
@@ -705,6 +707,7 @@ export function ReceiptModal({
             {autoPrompt ? "فاتورة جديدة" : "إغلاق"}
           </Button>
           <ExportButtons
+            primary
             kind="receipt"
             fileName={`فاتورة-${sale.id}`}
             document={() => <Receipt sale={sale} settings={settings} />}

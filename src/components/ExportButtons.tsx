@@ -10,11 +10,14 @@ export function ExportButtons({
   kind = "a4",
   fileName,
   disabled,
+  primary,
 }: {
   document: () => ReactNode;
   kind?: PageKind;
   fileName: string;
   disabled?: boolean;
+  /** Make "Print" the main action, e.g. right after a sale. */
+  primary?: boolean;
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -33,9 +36,10 @@ export function ExportButtons({
   return (
     <>
       <Button
-        tone="outline"
+        tone={primary ? "primary" : "outline"}
         disabled={disabled || busy}
         onClick={() => run(() => printDocument(document(), kind))}
+        data-autofocus={primary || undefined}
       >
         <Printer className="size-4" />
         طباعة
