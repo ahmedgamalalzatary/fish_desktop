@@ -1,0 +1,32 @@
+[package]
+name = "fish-pos"
+version = "0.1.0"
+description = "نظام نقاط بيع لمحل الأسماك"
+authors = ["Ahmed"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix avoids a name clash between the lib and bin on Windows,
+# see https://github.com/rust-lang/cargo/issues/8519
+name = "fish_pos_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["getrandom"] }
+chrono = "0.4"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
