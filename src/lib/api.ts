@@ -61,7 +61,8 @@ export const api = {
   deleteCategory: (id: number) => call<void>("delete_category", { id }),
 
   listProducts: (includeInactive = false) => call<Product[]>("list_products", { includeInactive }),
-  createProduct: (input: ProductInput) => call<number>("create_product", { input }),
+  createProduct: (input: ProductInput, openingStockGrams: number) =>
+    call<number>("create_product", { input, openingStockGrams }),
   updateProduct: (id: number, input: ProductInput) => call<void>("update_product", { id, input }),
   deleteProduct: (id: number) => call<"deleted" | "archived">("delete_product", { id }),
   restoreProduct: (id: number) => call<void>("restore_product", { id }),

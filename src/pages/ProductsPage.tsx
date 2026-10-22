@@ -275,8 +275,7 @@ function ProductForm({
       if (product) {
         await api.updateProduct(product.id, input);
       } else {
-        const id = await api.createProduct(input);
-        if (opening > 0) await api.adjustStock(id, opening, "مخزون افتتاحي");
+        await api.createProduct(input, opening);
       }
       toast(product ? "حُفظت التعديلات" : "أُضيف المنتج");
       onSaved();

@@ -158,20 +158,44 @@ fn save_variants(tx: &Connection, product_id: i64, variants: &[Variant]) -> AppR
     Ok(())
 }
 
+/// Saves the product and its opening stock together, so a failure never leaves one without the other.
 #[tauri::command]
-pub fn create_product(state: State<AppState>, input: ProductInput) -> AppResult<i64> {
-    state.admin()?;
-    input.validate()?;
+pub fn create_product(
+    state: State<AppState>,
+    input: ProductInput,
+    opening_stock_grams: i64,
+) -> AppResult<i64> {
+    let user = state.admin()?;
     let mut db = state.db.lock().unwrap();
+    insert_product(&mut db, user.id, &input, opening_stock_grams)
+}
+
+pub fn insert_product(
+    db: &mut Connection,
+    user_id: i64,
+    input: &ProductInput,
+    opening_stock_grams: i64,
+) -> AppResult<i64> {
+    input.validate()?;
+    if opening_stock_grams < 0 {
+        return invalid("المخزون الافتتاحي لا يمكن أن يكون سالباً");
+    }
     let tx = db.transaction()?;
     let ts = now();
     tx.execute(
-        "INSERT INTO products (name, category_id, sell_by_weight, price_per_kg, cost_per_kg, low_stock_grams, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_kg, input.cost_per_kg, input.low_stock_grams, ts],
+        "INSERT INTO products (name, category_id, sell_by_weight, price_per_kg, cost_per_kg, low_stock_grams, stock_grams, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_kg, input.cost_per_kg, input.low_stock_grams, opening_stock_grams, ts],
     )?;
     let id = tx.last_insert_rowid();
     save_variants(&tx, id, &input.variants)?;
+    if opening_stock_grams > 0 {
+        tx.execute(
+            "INSERT INTO stock_movements (product_id, change_grams, reason, note, user_id, created_at)
+             VALUES (?1, ?2, 'adjustment', 'مخزون افتتاحي', ?3, ?4)",
+            params![id, opening_stock_grams, user_id, ts],
+        )?;
+    }
     tx.commit()?;
     Ok(id)
 }
@@ -223,4 +247,62 @@ pub fn restore_product(state: State<AppState>, id: i64) -> AppResult<()> {
         .unwrap()
         .execute("UPDATE products SET active = 1 WHERE id = ?1", [id])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(category_id: i64) -> ProductInput {
+        ProductInput {
+            name: "بلطي".into(),
+            category_id,
+            sell_by_weight: true,
+            price_per_kg: 9000,
+            cost_per_kg: 6000,
+            low_stock_grams: 0,
+            variants: vec![],
+        }
+    }
+
+    fn count(db: &Connection, sql: &str) -> i64 {
+        db.query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn opening_stock_is_saved_with_the_product_or_not_at_all() {
+        let path = std::env::temp_dir().join(format!("fish-pos-product-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut db = crate::db::open(&path).unwrap();
+        db.execute_batch(
+            "INSERT INTO users (id, name, username, password_hash, role, created_at) VALUES (1, 'a', 'a', 'x', 'admin', '2026-01-01 00:00:00');
+             INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');",
+        )
+        .unwrap();
+
+        let id = insert_product(&mut db, 1, &input(1), 2500).unwrap();
+        let stock: i64 = db
+            .query_row(
+                "SELECT stock_grams FROM products WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stock, 2500);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT SUM(change_grams) FROM stock_movements WHERE note = 'مخزون افتتاحي'"
+            ),
+            2500
+        );
+
+        // An unknown category fails the insert; nothing from that attempt may remain.
+        assert!(insert_product(&mut db, 1, &input(99), 1000).is_err());
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM products"), 1);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM stock_movements"), 1);
+
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
 }
