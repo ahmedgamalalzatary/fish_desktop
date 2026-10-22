@@ -1,6 +1,6 @@
 [package]
 name = "fish-pos"
-version = "0.1.0"
+version = "0.2.0"
 description = "نظام نقاط بيع لمحل الأسماك"
 authors = ["Ahmed"]
 edition = "2024"
