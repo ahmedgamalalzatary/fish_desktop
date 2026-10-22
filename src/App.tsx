@@ -9,12 +9,16 @@ import { EmployeesPage } from "./pages/EmployeesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
+import { PurchasesPage } from "./pages/PurchasesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StockPage } from "./pages/StockPage";
 
 export default function App() {
-  const [state, setState] = useState<{ user: SessionUser | null; needsSetup: boolean } | null>(null);
+  const [state, setState] = useState<{
+    user: SessionUser | null;
+    needsSetup: boolean;
+  } | null>(null);
 
   useEffect(() => {
     Promise.all([api.currentUser(), api.needsSetup()]).then(([user, needsSetup]) =>
@@ -42,6 +46,7 @@ export default function App() {
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/stock" element={<StockPage />} />
+                <Route path="/purchases" element={<PurchasesPage />} />
                 <Route path="/employees" element={<EmployeesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </>

@@ -1,3 +1,4 @@
+use super::suppliers::BALANCE_SQL;
 use crate::error::AppResult;
 use crate::state::AppState;
 use rusqlite::{Connection, Params, Row};
@@ -33,6 +34,7 @@ pub struct Summary {
     grams_sold: i64,
     purchases_cost: i64,
     purchases_grams: i64,
+    supplier_paid: i64,
     by_payment: Vec<PaymentTotal>,
 }
 
@@ -58,6 +60,11 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         [&from, &to],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
+    let supplier_paid: i64 = db.query_row(
+        "SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE date(created_at) BETWEEN ?1 AND ?2",
+        [&from, &to],
+        |r| r.get(0),
+    )?;
     let by_payment = query(
         &db,
         "SELECT payment_method, COUNT(*), SUM(total) FROM sales
@@ -79,6 +86,7 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         grams_sold,
         purchases_cost,
         purchases_grams,
+        supplier_paid,
         by_payment,
     })
 }
@@ -254,6 +262,8 @@ pub struct MovementRow {
     cost_total: Option<i64>,
     note: Option<String>,
     sale_id: Option<i64>,
+    purchase_id: Option<i64>,
+    supplier_name: Option<String>,
     user_name: String,
 }
 
@@ -268,10 +278,13 @@ pub fn report_movements(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT m.id, m.created_at, p.name, m.change_grams, m.reason, m.cost_total, m.note, m.sale_id, u.name
+        "SELECT m.id, m.created_at, p.name, m.change_grams, m.reason, m.cost_total, m.note, m.sale_id,
+                m.purchase_id, s.name, u.name
          FROM stock_movements m
          JOIN products p ON p.id = m.product_id
          JOIN users u ON u.id = m.user_id
+         LEFT JOIN purchases pu ON pu.id = m.purchase_id
+         LEFT JOIN suppliers s ON s.id = pu.supplier_id
          WHERE date(m.created_at) BETWEEN ?1 AND ?2 AND (?3 IS NULL OR m.reason = ?3)
          ORDER BY m.id DESC LIMIT 2000",
         rusqlite::params![from, to, reason],
@@ -285,8 +298,57 @@ pub fn report_movements(
                 cost_total: r.get(5)?,
                 note: r.get(6)?,
                 sale_id: r.get(7)?,
-                user_name: r.get(8)?,
+                purchase_id: r.get(8)?,
+                supplier_name: r.get(9)?,
+                user_name: r.get(10)?,
             })
         },
     )
+}
+
+#[derive(Serialize)]
+pub struct SupplierRow {
+    supplier_id: i64,
+    name: String,
+    purchases_count: i64,
+    purchases_total: i64,
+    grams: i64,
+    paid: i64,
+    /// Current balance, regardless of the period.
+    balance: i64,
+}
+
+/// Purchases and payments per supplier in the period. Suppliers still owed money are listed even when idle.
+#[tauri::command]
+pub fn report_by_supplier(
+    state: State<AppState>,
+    from: String,
+    to: String,
+) -> AppResult<Vec<SupplierRow>> {
+    state.admin()?;
+    let db = state.db.lock().unwrap();
+    let sql = format!(
+        "SELECT * FROM (
+             SELECT s.id, s.name,
+                    (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2) AS cnt,
+                    COALESCE((SELECT SUM(total) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0) AS total,
+                    COALESCE((SELECT SUM(m.change_grams) FROM stock_movements m JOIN purchases p ON p.id = m.purchase_id
+                              WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0),
+                    COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.supplier_id = s.id AND date(sp.created_at) BETWEEN ?1 AND ?2), 0) AS paid,
+                    {BALANCE_SQL} AS balance
+             FROM suppliers s
+         ) WHERE cnt > 0 OR paid != 0 OR balance != 0
+         ORDER BY total DESC, balance DESC"
+    );
+    query(&db, &sql, [&from, &to], |r| {
+        Ok(SupplierRow {
+            supplier_id: r.get(0)?,
+            name: r.get(1)?,
+            purchases_count: r.get(2)?,
+            purchases_total: r.get(3)?,
+            grams: r.get(4)?,
+            paid: r.get(5)?,
+            balance: r.get(6)?,
+        })
+    })
 }

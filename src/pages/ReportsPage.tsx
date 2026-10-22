@@ -5,6 +5,7 @@ import { ExportButtons } from "../components/ExportButtons";
 import { ReportDocument } from "../components/ReportDocument";
 import { cx } from "../lib/cx";
 import { section, type DocumentSection } from "../lib/document";
+import { purchaseColumns, supplierReportColumns } from "../lib/purchases";
 import { stockColumns, stockValue } from "../lib/stock";
 import { useResource } from "../lib/useResource";
 import { Empty, Input, PageHeader, Panel, Select, Toggle } from "../components/ui";
@@ -28,14 +29,26 @@ import type {
   MovementRow,
   Product,
   ProductReportRow,
+  PurchaseSummary,
   ReportSummary,
   Sale,
   SaleSummary,
+  SupplierReportRow,
 } from "../lib/types";
 import { ReceiptModal } from "./PosPage";
+import { PurchaseDetailModal } from "./PurchasesPage";
 
 type Preset = "today" | "yesterday" | "week" | "month" | "last-month" | "year" | "custom";
-type Tab = "summary" | "sales" | "products" | "categories" | "cashiers" | "stock" | "movements";
+type Tab =
+  | "summary"
+  | "sales"
+  | "products"
+  | "categories"
+  | "cashiers"
+  | "purchases"
+  | "suppliers"
+  | "stock"
+  | "movements";
 
 const presets: { value: Preset; label: string }[] = [
   { value: "today", label: "اليوم" },
@@ -53,6 +66,8 @@ const tabs: { value: Tab; label: string }[] = [
   { value: "products", label: "المنتجات" },
   { value: "categories", label: "التصنيفات" },
   { value: "cashiers", label: "الموظفون" },
+  { value: "purchases", label: "المشتريات" },
+  { value: "suppliers", label: "الموردون" },
   { value: "stock", label: "المخزون" },
   { value: "movements", label: "حركة المخزون" },
 ];
@@ -84,6 +99,8 @@ interface ReportData {
   products: ProductReportRow[];
   categories: CategoryReportRow[];
   cashiers: CashierReportRow[];
+  purchases: PurchaseSummary[];
+  suppliers: SupplierReportRow[];
   stock: Product[];
   movements: MovementRow[];
 }
@@ -101,20 +118,35 @@ export function ReportsPage() {
   const [rollUp, setRollUp] = useState(false);
   const [reason, setReason] = useState<MovementReason | "">("");
   const [openSale, setOpenSale] = useState<Sale | null>(null);
+  const [openPurchase, setOpenPurchase] = useState<number | null>(null);
   const currency = settings.currency;
 
   const fetchReports = useCallback(async (): Promise<ReportData> => {
-    const [summary, daily, sales, products, categories, cashiers, stock, movements] = await Promise.all([
-      api.reportSummary(range),
-      api.reportDaily(range),
-      api.listSales(range),
-      api.reportByProduct(range),
-      api.reportByCategory(range),
-      api.reportByCashier(range),
-      api.listProducts(),
-      api.reportMovements(range),
-    ]);
-    return { summary, daily, sales, products, categories, cashiers, stock, movements };
+    const [summary, daily, sales, products, categories, cashiers, purchases, suppliers, stock, movements] =
+      await Promise.all([
+        api.reportSummary(range),
+        api.reportDaily(range),
+        api.listSales(range),
+        api.reportByProduct(range),
+        api.reportByCategory(range),
+        api.reportByCashier(range),
+        api.listPurchases(range),
+        api.reportBySupplier(range),
+        api.listProducts(),
+        api.reportMovements(range),
+      ]);
+    return {
+      summary,
+      daily,
+      sales,
+      products,
+      categories,
+      cashiers,
+      purchases,
+      suppliers,
+      stock,
+      movements,
+    };
   }, [range]);
   const [data] = useResource(fetchReports);
 
@@ -161,25 +193,43 @@ export function ReportsPage() {
 
   const dailyColumns: Column<DailyRow>[] = [
     { header: "اليوم", cell: (r) => r.day.split("-").reverse().join("/") },
-    { header: "عدد الفواتير", numeric: true, cell: (r) => r.sales_count, total: s.sales_count },
+    {
+      header: "عدد الفواتير",
+      numeric: true,
+      cell: (r) => r.sales_count,
+      total: s.sales_count,
+    },
     {
       header: "المبيعات",
       numeric: true,
       cell: (r) => formatAmount(r.revenue),
       total: formatAmount(s.revenue),
     },
-    { header: "الربح", numeric: true, cell: (r) => formatAmount(r.profit), total: formatAmount(s.profit) },
+    {
+      header: "الربح",
+      numeric: true,
+      cell: (r) => formatAmount(r.profit),
+      total: formatAmount(s.profit),
+    },
   ];
 
   const paymentColumns: Column<ReportSummary["by_payment"][number]>[] = [
     { header: "طريقة الدفع", cell: (r) => paymentLabels[r.method] },
     { header: "عدد الفواتير", numeric: true, cell: (r) => r.count },
-    { header: "المبلغ", numeric: true, cell: (r) => formatAmount(r.total), total: formatAmount(s.revenue) },
+    {
+      header: "المبلغ",
+      numeric: true,
+      cell: (r) => formatAmount(r.total),
+      total: formatAmount(s.revenue),
+    },
   ];
 
   const salesColumns: Column<SaleSummary>[] = [
     { header: "رقم الفاتورة", cell: (r) => `#${r.id}` },
-    { header: "التاريخ", cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span> },
+    {
+      header: "التاريخ",
+      cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span>,
+    },
     { header: "الكاشير", cell: (r) => r.cashier_name },
     { header: "الدفع", cell: (r) => paymentLabels[r.payment_method] },
     { header: "الأصناف", numeric: true, cell: (r) => r.items_count },
@@ -207,13 +257,30 @@ export function ReportsPage() {
       cell: (r) => formatAmount(r.revenue),
       total: formatAmount(s.revenue),
     },
-    { header: "التكلفة", numeric: true, cell: (r) => formatAmount(r.cost), total: formatAmount(s.cost) },
-    { header: "الربح", numeric: true, cell: (r) => formatAmount(r.profit), total: formatAmount(s.profit) },
-    { header: "الهامش", numeric: true, cell: (r) => margin(r.profit, r.revenue) },
+    {
+      header: "التكلفة",
+      numeric: true,
+      cell: (r) => formatAmount(r.cost),
+      total: formatAmount(s.cost),
+    },
+    {
+      header: "الربح",
+      numeric: true,
+      cell: (r) => formatAmount(r.profit),
+      total: formatAmount(s.profit),
+    },
+    {
+      header: "الهامش",
+      numeric: true,
+      cell: (r) => margin(r.profit, r.revenue),
+    },
   ];
 
   const categoryColumns: Column<CategoryReportRow>[] = [
-    { header: "التصنيف", cell: (r) => (r.parent_name ? `${r.parent_name} / ${r.name}` : r.name) },
+    {
+      header: "التصنيف",
+      cell: (r) => (r.parent_name ? `${r.parent_name} / ${r.name}` : r.name),
+    },
     {
       header: "الوزن المباع",
       numeric: true,
@@ -226,27 +293,52 @@ export function ReportsPage() {
       cell: (r) => formatAmount(r.revenue),
       total: formatAmount(s.revenue),
     },
-    { header: "الربح", numeric: true, cell: (r) => formatAmount(r.profit), total: formatAmount(s.profit) },
-    { header: "من إجمالي المبيعات", numeric: true, cell: (r) => margin(r.revenue, s.revenue) },
+    {
+      header: "الربح",
+      numeric: true,
+      cell: (r) => formatAmount(r.profit),
+      total: formatAmount(s.profit),
+    },
+    {
+      header: "من إجمالي المبيعات",
+      numeric: true,
+      cell: (r) => margin(r.revenue, s.revenue),
+    },
   ];
 
   const cashierColumns: Column<CashierReportRow>[] = [
     { header: "الموظف", cell: (r) => r.name },
-    { header: "عدد الفواتير", numeric: true, cell: (r) => r.sales_count, total: s.sales_count },
+    {
+      header: "عدد الفواتير",
+      numeric: true,
+      cell: (r) => r.sales_count,
+      total: s.sales_count,
+    },
     {
       header: "المبيعات",
       numeric: true,
       cell: (r) => formatAmount(r.revenue),
       total: formatAmount(s.revenue),
     },
-    { header: "الربح", numeric: true, cell: (r) => formatAmount(r.profit), total: formatAmount(s.profit) },
+    {
+      header: "الربح",
+      numeric: true,
+      cell: (r) => formatAmount(r.profit),
+      total: formatAmount(s.profit),
+    },
     {
       header: "متوسط الفاتورة",
       numeric: true,
       cell: (r) => formatAmount(Math.round(r.revenue / r.sales_count)),
     },
-    { header: "أول فاتورة", cell: (r) => <span dir="ltr">{formatDateTime(r.first_sale)}</span> },
-    { header: "آخر فاتورة", cell: (r) => <span dir="ltr">{formatDateTime(r.last_sale)}</span> },
+    {
+      header: "أول فاتورة",
+      cell: (r) => <span dir="ltr">{formatDateTime(r.first_sale)}</span>,
+    },
+    {
+      header: "آخر فاتورة",
+      cell: (r) => <span dir="ltr">{formatDateTime(r.last_sale)}</span>,
+    },
   ];
 
   const stockValueTotal = sum(data.stock, stockValue);
@@ -255,7 +347,10 @@ export function ReportsPage() {
   );
 
   const movementColumns: Column<MovementRow>[] = [
-    { header: "التاريخ", cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span> },
+    {
+      header: "التاريخ",
+      cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span>,
+    },
     { header: "المنتج", cell: (r) => r.product_name },
     { header: "النوع", cell: (r) => movementLabels[r.reason] },
     {
@@ -276,7 +371,16 @@ export function ReportsPage() {
       numeric: true,
       cell: (r) => (r.cost_total === null ? "—" : formatAmount(r.cost_total)),
     },
-    { header: "ملاحظة", cell: (r) => r.note ?? (r.sale_id ? `فاتورة #${r.sale_id}` : "") },
+    {
+      header: "ملاحظة",
+      cell: (r) =>
+        r.note ??
+        (r.sale_id
+          ? `فاتورة #${r.sale_id}`
+          : r.purchase_id
+            ? `شراء #${r.purchase_id} · ${r.supplier_name}`
+            : ""),
+    },
     { header: "بواسطة", cell: (r) => r.user_name },
   ];
 
@@ -292,19 +396,40 @@ export function ReportsPage() {
     { label: "التكلفة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
     { label: "مشتريات الفترة", value: formatMoney(s.purchases_cost, currency) },
+    { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
+    {
+      label: "مستحق للموردين حالياً",
+      value: formatMoney(
+        sum(data.suppliers, (r) => r.balance),
+        currency,
+      ),
+    },
   ];
+
+  const purchaseCols = purchaseColumns(data.purchases);
+  const supplierCols = supplierReportColumns(data.suppliers);
 
   // ---- Per-tab document for print/PDF ----
 
   const tabSections: Record<Tab, DocumentSection[]> = {
     summary: [
-      section({ title: "المبيعات حسب طريقة الدفع", columns: paymentColumns, rows: s.by_payment }),
-      section({ title: "المبيعات اليومية", columns: dailyColumns, rows: data.daily }),
+      section({
+        title: "المبيعات حسب طريقة الدفع",
+        columns: paymentColumns,
+        rows: s.by_payment,
+      }),
+      section({
+        title: "المبيعات اليومية",
+        columns: dailyColumns,
+        rows: data.daily,
+      }),
     ],
     sales: [section({ columns: salesColumns, rows: data.sales })],
     products: [section({ columns: productColumns, rows: data.products })],
     categories: [section({ columns: categoryColumns, rows: categoryRows })],
     cashiers: [section({ columns: cashierColumns, rows: data.cashiers })],
+    purchases: [section({ columns: purchaseCols, rows: data.purchases })],
+    suppliers: [section({ columns: supplierCols, rows: data.suppliers })],
     stock: [section({ columns: stockCols, rows: data.stock })],
     movements: [section({ columns: movementColumns, rows: movements })],
   };
@@ -332,10 +457,31 @@ export function ReportsPage() {
       figures={figures}
       sections={[
         ...tabSections.summary,
-        section({ title: "المنتجات", columns: productColumns, rows: data.products }),
-        section({ title: "التصنيفات", columns: categoryColumns, rows: categoryRows }),
-        section({ title: "الموظفون", columns: cashierColumns, rows: data.cashiers }),
-        section({ title: "المخزون الحالي", columns: stockCols, rows: data.stock }),
+        section({
+          title: "المنتجات",
+          columns: productColumns,
+          rows: data.products,
+        }),
+        section({
+          title: "التصنيفات",
+          columns: categoryColumns,
+          rows: categoryRows,
+        }),
+        section({
+          title: "الموظفون",
+          columns: cashierColumns,
+          rows: data.cashiers,
+        }),
+        section({
+          title: "الموردون",
+          columns: supplierCols,
+          rows: data.suppliers,
+        }),
+        section({
+          title: "المخزون الحالي",
+          columns: stockCols,
+          rows: data.stock,
+        }),
       ]}
     />
   );
@@ -484,6 +630,30 @@ export function ReportsPage() {
           )}
         </TabTable>
       )}
+      {tab === "purchases" && (
+        <TabTable empty="لا توجد فواتير شراء في هذه الفترة">
+          {data.purchases.length > 0 && (
+            <DataTable
+              columns={purchaseCols}
+              rows={data.purchases}
+              rowKey={(r) => r.id}
+              onRowClick={(r) => setOpenPurchase(r.id)}
+            />
+          )}
+        </TabTable>
+      )}
+      {tab === "suppliers" && (
+        <>
+          <p className="mb-3 text-sm text-mist">
+            المشتريات والمدفوع خلال الفترة المختارة، و«المستحق حالياً» هو رصيد كل مورد اليوم.
+          </p>
+          <TabTable empty="لا توجد مشتريات أو مستحقات للموردين">
+            {data.suppliers.length > 0 && (
+              <DataTable columns={supplierCols} rows={data.suppliers} rowKey={(r) => r.supplier_id} />
+            )}
+          </TabTable>
+        </>
+      )}
       {tab === "stock" && (
         <>
           <p className="mb-3 text-sm text-mist">المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.</p>
@@ -519,6 +689,9 @@ export function ReportsPage() {
       )}
 
       {openSale && <ReceiptModal sale={openSale} onClose={() => setOpenSale(null)} />}
+      {openPurchase !== null && (
+        <PurchaseDetailModal id={openPurchase} onClose={() => setOpenPurchase(null)} />
+      )}
     </div>
   );
 }

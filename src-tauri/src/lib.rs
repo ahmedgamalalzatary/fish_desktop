@@ -37,7 +37,17 @@ pub fn run() {
             products::update_product,
             products::delete_product,
             products::restore_product,
-            stock::add_purchase,
+            suppliers::list_suppliers,
+            suppliers::create_supplier,
+            suppliers::update_supplier,
+            suppliers::delete_supplier,
+            suppliers::add_supplier_payment,
+            suppliers::delete_supplier_payment,
+            suppliers::supplier_statement,
+            purchases::create_purchase,
+            purchases::list_purchases,
+            purchases::get_purchase,
+            purchases::delete_purchase,
             stock::adjust_stock,
             sales::create_sale,
             sales::get_sale,
@@ -52,6 +62,7 @@ pub fn run() {
             reports::report_by_category,
             reports::report_by_cashier,
             reports::report_movements,
+            reports::report_by_supplier,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

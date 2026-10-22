@@ -5,6 +5,7 @@ import {
   Package,
   Settings,
   ShoppingBasket,
+  Truck,
   UsersRound,
   Warehouse,
   type LucideIcon,
@@ -19,6 +20,7 @@ const adminNav: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/products", label: "المنتجات", icon: Package },
   { to: "/categories", label: "التصنيفات", icon: FolderTree },
   { to: "/stock", label: "المخزون", icon: Warehouse },
+  { to: "/purchases", label: "المشتريات", icon: Truck },
   { to: "/employees", label: "الموظفون", icon: UsersRound },
   { to: "/settings", label: "الإعدادات", icon: Settings },
 ];

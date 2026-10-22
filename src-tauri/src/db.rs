@@ -3,7 +3,8 @@ use std::path::Path;
 
 /// Schema migrations, applied in order. Each entry bumps `PRAGMA user_version` by one.
 /// Never edit an existing entry once released — append a new one instead.
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE users (
     id            INTEGER PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -104,7 +105,50 @@ CREATE INDEX idx_sale_items_sale ON sale_items(sale_id);
 CREATE INDEX idx_sale_items_product ON sale_items(product_id);
 CREATE INDEX idx_movements_created ON stock_movements(created_at);
 CREATE INDEX idx_products_category ON products(category_id);
-"#];
+"#,
+    r#"
+-- `opening_balance` is what the shop already owed the supplier when they were added.
+-- A supplier's balance = opening_balance + purchases - payments.
+CREATE TABLE suppliers (
+    id              INTEGER PRIMARY KEY,
+    name            TEXT NOT NULL,
+    phone           TEXT NOT NULL DEFAULT '',
+    note            TEXT NOT NULL DEFAULT '',
+    opening_balance INTEGER NOT NULL DEFAULT 0,
+    active          INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL
+);
+
+-- One row per supplier invoice; its lines are the stock_movements that point at it.
+CREATE TABLE purchases (
+    id          INTEGER PRIMARY KEY,
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    invoice_no  TEXT NOT NULL DEFAULT '',
+    total       INTEGER NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    created_at  TEXT NOT NULL
+);
+
+-- `purchase_id` is set when the payment was made while receiving that invoice.
+CREATE TABLE supplier_payments (
+    id          INTEGER PRIMARY KEY,
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    purchase_id INTEGER REFERENCES purchases(id),
+    amount      INTEGER NOT NULL CHECK (amount > 0),
+    note        TEXT NOT NULL DEFAULT '',
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    created_at  TEXT NOT NULL
+);
+
+ALTER TABLE stock_movements ADD COLUMN purchase_id INTEGER REFERENCES purchases(id);
+
+CREATE INDEX idx_purchases_created ON purchases(created_at);
+CREATE INDEX idx_purchases_supplier ON purchases(supplier_id);
+CREATE INDEX idx_payments_supplier ON supplier_payments(supplier_id);
+CREATE INDEX idx_movements_purchase ON stock_movements(purchase_id);
+"#,
+];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     let mut conn = Connection::open(path)?;

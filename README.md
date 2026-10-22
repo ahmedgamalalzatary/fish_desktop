@@ -14,11 +14,16 @@ A point-of-sale desktop app for a single fish shop (one device, no branches), bu
   A product can be sold by entered weight, by fixed weights, or both.
 - **Categories** have one level of sub-categories (e.g. أسماك ← أسماك نيلية).
 - **Stock** is tracked per product in grams. Fixed-weight sales deduct their weight.
-  Admins record goods received (with cost, optionally updating cost per kg) and stock-takes.
+  Goods come in through purchase invoices; admins also record stock-takes.
   Overselling is blocked unless enabled in settings.
+- **Purchases & suppliers:** a purchase invoice has a supplier and several products (weight + cost each),
+  adds them to stock, and can update each product's cost per kg. Pay in full, in part, or on credit;
+  the unpaid part goes to the supplier's balance. Record later payments, view and print a supplier
+  statement, and delete an invoice entered by mistake (its stock is taken back out).
 - **Sales:** cash (with change calculation), card or e-wallet. 80 mm thermal receipt.
 - **Reports:** summary with a daily chart, receipts, products, categories (with roll-up),
-  employees, current stock, and stock movements, for any date range.
+  employees, purchases, suppliers (purchases, payments and what is owed), current stock,
+  and stock movements, for any date range.
 - **Print & PDF:** every report, the sales lists, and each receipt can be printed or saved as PDF.
   PDFs are rendered by WebView2 itself, so Arabic text is shaped correctly.
 - **Backup:** a one-click database copy from Settings.
@@ -63,5 +68,5 @@ src/                 React frontend
 src-tauri/src/
   db.rs              schema migrations
   commands/          backend commands: auth, users, categories, products,
-                     stock, sales, reports, settings, pdf
+                     stock, suppliers, purchases, sales, reports, settings, pdf
 ```

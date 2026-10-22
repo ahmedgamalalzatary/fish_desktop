@@ -114,6 +114,7 @@ export interface ReportSummary {
   grams_sold: number;
   purchases_cost: number;
   purchases_grams: number;
+  supplier_paid: number;
   by_payment: { method: PaymentMethod; count: number; total: number }[];
 }
 
@@ -166,5 +167,83 @@ export interface MovementRow {
   cost_total: number | null;
   note: string | null;
   sale_id: number | null;
+  purchase_id: number | null;
+  supplier_name: string | null;
   user_name: string;
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  phone: string;
+  note: string;
+  opening_balance: number;
+  active: boolean;
+  purchases_count: number;
+  purchases_total: number;
+  paid_total: number;
+  /** What the shop owes the supplier now. */
+  balance: number;
+  last_purchase: string | null;
+}
+
+export interface SupplierInput {
+  name: string;
+  phone: string;
+  note: string;
+  opening_balance: number;
+  active: boolean;
+}
+
+export interface PurchaseItemInput {
+  product_id: number;
+  grams: number;
+  cost_total: number;
+}
+
+export interface PurchaseInput {
+  supplier_id: number;
+  invoice_no: string;
+  note: string;
+  paid: number;
+  update_cost: boolean;
+  items: PurchaseItemInput[];
+}
+
+export interface PurchaseSummary {
+  id: number;
+  created_at: string;
+  supplier_id: number;
+  supplier_name: string;
+  invoice_no: string;
+  items_count: number;
+  grams: number;
+  total: number;
+  /** Paid while receiving the invoice; later payments go to the supplier's account. */
+  paid: number;
+  user_name: string;
+}
+
+export interface Purchase extends PurchaseSummary {
+  note: string;
+  items: { product_name: string; grams: number; cost_total: number }[];
+}
+
+export interface StatementRow {
+  kind: "purchase" | "payment";
+  id: number;
+  created_at: string;
+  reference: string;
+  purchase_id: number | null;
+  amount: number;
+}
+
+export interface SupplierReportRow {
+  supplier_id: number;
+  name: string;
+  purchases_count: number;
+  purchases_total: number;
+  grams: number;
+  paid: number;
+  balance: number;
 }

@@ -6,30 +6,12 @@ import { ReportDocument } from "../components/ReportDocument";
 import { section } from "../lib/document";
 import { isLowStock as isLow, stockColumns, stockValue } from "../lib/stock";
 import { useResource } from "../lib/useResource";
-import {
-  Badge,
-  Button,
-  Empty,
-  Field,
-  Input,
-  Modal,
-  PageHeader,
-  Panel,
-  Segmented,
-  Toggle,
-} from "../components/ui";
+import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Panel, Segmented } from "../components/ui";
 import { api } from "../lib/api";
-import {
-  formatAmount,
-  formatMoney,
-  formatWeight,
-  gramsToKg,
-  isoDate,
-  parseKg,
-  parseMoney,
-} from "../lib/format";
+import { formatAmount, formatMoney, formatWeight, gramsToKg, isoDate, parseKg } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
+import { PurchaseFormModal } from "./PurchasesPage";
 import type { Product } from "../lib/types";
 
 type Filter = "all" | "low" | "out";
@@ -38,7 +20,10 @@ export function StockPage() {
   const { settings } = useSession();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [action, setAction] = useState<{ kind: "purchase" | "adjust"; product: Product } | null>(null);
+  const [action, setAction] = useState<{
+    kind: "purchase" | "adjust";
+    product: Product;
+  } | null>(null);
 
   const [data, load] = useResource(useCallback(() => api.listProducts(), []));
   const products = useMemo(() => data ?? [], [data]);
@@ -96,7 +81,11 @@ export function StockPage() {
   ];
   columns[columns.length - 2].total = formatAmount(totalValue);
 
-  const filterTitle = { all: "تقرير المخزون", low: "منتجات قاربت على النفاد", out: "منتجات نفدت" }[filter];
+  const filterTitle = {
+    all: "تقرير المخزون",
+    low: "منتجات قاربت على النفاد",
+    out: "منتجات نفدت",
+  }[filter];
 
   return (
     <div className="p-8">
@@ -112,7 +101,10 @@ export function StockPage() {
                 title={filterTitle}
                 figures={[
                   { label: "عدد المنتجات", value: visible.length },
-                  { label: "قيمة المخزون بالتكلفة", value: formatMoney(totalValue, settings.currency) },
+                  {
+                    label: "قيمة المخزون بالتكلفة",
+                    value: formatMoney(totalValue, settings.currency),
+                  },
                   { label: "منخفض", value: counts.low },
                   { label: "نفد", value: counts.out },
                 ]}
@@ -162,8 +154,8 @@ export function StockPage() {
       </Panel>
 
       {action?.kind === "purchase" && (
-        <PurchaseModal
-          product={action.product}
+        <PurchaseFormModal
+          productId={action.product.id}
           onClose={() => setAction(null)}
           onSaved={() => (setAction(null), load())}
         />
@@ -176,101 +168,6 @@ export function StockPage() {
         />
       )}
     </div>
-  );
-}
-
-function PurchaseModal({
-  product,
-  onClose,
-  onSaved,
-}: {
-  product: Product;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { settings } = useSession();
-  const toast = useToast();
-  const [kg, setKg] = useState("");
-  const [cost, setCost] = useState("");
-  const [note, setNote] = useState("");
-  const [updateCost, setUpdateCost] = useState(true);
-
-  const grams = parseKg(kg);
-  const costTotal = parseMoney(cost || "0");
-  const perKg = grams && costTotal !== null ? Math.round((costTotal * 1000) / grams) : null;
-
-  const save = async () => {
-    if (!grams || costTotal === null) return toast("أدخل الوزن والتكلفة بشكل صحيح", "error");
-    try {
-      await api.addPurchase(product.id, grams, costTotal, note, updateCost && costTotal > 0);
-      toast(`أُضيف ${formatWeight(grams)} إلى مخزون «${product.name}»`);
-      onSaved();
-    } catch (e) {
-      toast(errorMessage(e), "error");
-    }
-  };
-
-  return (
-    <Modal
-      title={`استلام بضاعة · ${product.name}`}
-      onClose={onClose}
-      footer={
-        <>
-          <Button tone="outline" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button onClick={save}>إضافة للمخزون</Button>
-        </>
-      }
-    >
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          save();
-        }}
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="الوزن المستلم (كجم)">
-            {(id) => (
-              <Input
-                id={id}
-                dir="ltr"
-                inputMode="decimal"
-                value={kg}
-                onChange={(e) => setKg(e.target.value)}
-              />
-            )}
-          </Field>
-          <Field label={`إجمالي التكلفة (${settings.currency})`}>
-            {(id) => (
-              <Input
-                id={id}
-                dir="ltr"
-                inputMode="decimal"
-                value={cost}
-                onChange={(e) => setCost(e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
-        <Field label="ملاحظة" hint="اختياري، مثل اسم المورد أو رقم فاتورته.">
-          {(id) => <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
-        </Field>
-        <Toggle
-          checked={updateCost}
-          onChange={setUpdateCost}
-          label="تحديث تكلفة الكيلو"
-          description={
-            perKg !== null && costTotal
-              ? `تصبح التكلفة ${formatMoney(perKg, settings.currency)} للكيلو بدلاً من ${formatMoney(product.cost_per_kg, settings.currency)}.`
-              : "تُحسب من إجمالي التكلفة والوزن."
-          }
-        />
-        <p className="text-sm text-mist">المخزون الحالي: {formatWeight(product.stock_grams)}</p>
-        <button type="submit" hidden />
-      </form>
-    </Modal>
   );
 }
 

@@ -11,11 +11,18 @@ import type {
   Product,
   ProductInput,
   ProductReportRow,
+  Purchase,
+  PurchaseInput,
+  PurchaseSummary,
   ReportSummary,
   Sale,
   SaleSummary,
   SessionUser,
   Settings,
+  StatementRow,
+  Supplier,
+  SupplierInput,
+  SupplierReportRow,
   User,
   UserInput,
 } from "./types";
@@ -59,10 +66,23 @@ export const api = {
   deleteProduct: (id: number) => call<"deleted" | "archived">("delete_product", { id }),
   restoreProduct: (id: number) => call<void>("restore_product", { id }),
 
-  addPurchase: (productId: number, grams: number, costTotal: number, note: string, updateCost: boolean) =>
-    call<void>("add_purchase", { productId, grams, costTotal, note, updateCost }),
   adjustStock: (productId: number, newGrams: number, note: string) =>
     call<void>("adjust_stock", { productId, newGrams, note }),
+
+  listSuppliers: () => call<Supplier[]>("list_suppliers"),
+  createSupplier: (input: SupplierInput) => call<number>("create_supplier", { input }),
+  updateSupplier: (id: number, input: SupplierInput) => call<void>("update_supplier", { id, input }),
+  deleteSupplier: (id: number) => call<"deleted" | "deactivated">("delete_supplier", { id }),
+  addSupplierPayment: (supplierId: number, amount: number, note: string) =>
+    call<void>("add_supplier_payment", { supplierId, amount, note }),
+  deleteSupplierPayment: (id: number) => call<void>("delete_supplier_payment", { id }),
+  supplierStatement: (supplierId: number) => call<StatementRow[]>("supplier_statement", { supplierId }),
+
+  createPurchase: (input: PurchaseInput) => call<number>("create_purchase", { input }),
+  listPurchases: (range: Range, supplierId: number | null = null) =>
+    call<PurchaseSummary[]>("list_purchases", { ...range, supplierId }),
+  getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
+  deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
   createSale: (items: CartItemInput[], paymentMethod: PaymentMethod, paid: number) =>
     call<Sale>("create_sale", { items, paymentMethod, paid }),
@@ -81,4 +101,5 @@ export const api = {
   reportByCashier: (r: Range) => call<CashierReportRow[]>("report_by_cashier", r),
   reportMovements: (r: Range, reason: MovementReason | null = null) =>
     call<MovementRow[]>("report_movements", { ...r, reason }),
+  reportBySupplier: (r: Range) => call<SupplierReportRow[]>("report_by_supplier", r),
 };
