@@ -1,24 +1,41 @@
 import type { Column } from "../components/DataTable";
-import { formatAmount, formatWeight, priceForGrams } from "./format";
-import type { Product } from "./types";
+import { formatAmount, formatPieces } from "./format";
+import type { Product, Variant } from "./types";
+
+/** One stock line: a variant together with the product it belongs to. */
+export interface StockRow {
+  product: Product;
+  variant: Variant;
+}
+
+export const stockRows = (products: Product[]): StockRow[] =>
+  products.flatMap((product) => product.variants.map((variant) => ({ product, variant })));
 
 /** Value of what is on hand at cost price. Negative stock counts as zero. */
-export const stockValue = (p: Product) => priceForGrams(p.cost_per_kg, Math.max(p.stock_grams, 0));
+export const stockValue = (v: Variant) => v.cost * Math.max(v.stock, 0);
 
-export const isLowStock = (p: Product) => p.stock_grams > 0 && p.stock_grams <= p.low_stock_grams;
+export const isLowStock = (v: Variant) => v.stock > 0 && v.stock <= v.low_stock;
+
+/** Total pieces across a product's variants. */
+export const productStock = (p: Product) => p.variants.reduce((s, v) => s + v.stock, 0);
 
 /** Stock columns shared by the stock page and the printed stock reports. */
-export function stockColumns(currency: string): Column<Product>[] {
+export function stockColumns(currency: string): Column<StockRow>[] {
   return [
-    { header: "المنتج", cell: (p) => p.name },
-    { header: "التصنيف", cell: (p) => p.category_name },
-    { header: "المتوفر", numeric: true, cell: (p) => formatWeight(p.stock_grams) },
+    { header: "المنتج", cell: (r) => r.product.name },
+    { header: "النوع", cell: (r) => r.variant.label || "—" },
+    { header: "التصنيف", cell: (r) => r.product.category_name },
+    { header: "المتوفر", numeric: true, cell: (r) => formatPieces(r.variant.stock) },
     {
       header: "حد التنبيه",
       numeric: true,
-      cell: (p) => (p.low_stock_grams ? formatWeight(p.low_stock_grams) : "—"),
+      cell: (r) => (r.variant.low_stock ? r.variant.low_stock : "—"),
     },
-    { header: "تكلفة الكيلو", numeric: true, cell: (p) => formatAmount(p.cost_per_kg) },
-    { header: `قيمة المخزون (${currency})`, numeric: true, cell: (p) => formatAmount(stockValue(p)) },
+    { header: "سعر الشراء", numeric: true, cell: (r) => formatAmount(r.variant.cost) },
+    {
+      header: `قيمة المخزون (${currency})`,
+      numeric: true,
+      cell: (r) => formatAmount(stockValue(r.variant)),
+    },
   ];
 }

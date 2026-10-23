@@ -28,7 +28,7 @@ export function ReportDocument({
     <div dir="rtl" className="bg-white font-sans text-[11px] leading-5 text-black">
       <header className="flex items-end justify-between border-b-2 border-black pb-2">
         <div>
-          <div className="font-sign text-2xl leading-8">{settings.shop_name}</div>
+          <div className="font-display text-2xl leading-8">{settings.shop_name}</div>
           {(settings.shop_address || settings.shop_phone) && (
             <div className="text-[10px]">
               {settings.shop_address} {settings.shop_phone && <span dir="ltr">{settings.shop_phone}</span>}

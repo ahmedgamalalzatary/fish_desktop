@@ -1,4 +1,4 @@
-// Mirrors the Rust command payloads. Money is integer cents, weight is integer grams.
+// Mirrors the Rust command payloads. Money is integer cents, quantities are whole pieces.
 
 export type Role = "admin" | "cashier";
 export type PaymentMethod = "cash" | "card" | "wallet";
@@ -31,12 +31,15 @@ export interface Category {
   product_count: number;
 }
 
+/** A sellable option of a product, e.g. "128GB أسود". Stock is counted per variant. */
 export interface Variant {
-  id: number | null;
+  id: number;
+  /** Empty for a product sold without options. */
   label: string;
-  weight_grams: number;
   price: number;
   cost: number;
+  stock: number;
+  low_stock: number;
 }
 
 export interface Product {
@@ -46,37 +49,37 @@ export interface Product {
   category_name: string;
   parent_category_id: number | null;
   parent_category_name: string | null;
-  sell_by_weight: boolean;
-  price_per_kg: number;
-  cost_per_kg: number;
-  stock_grams: number;
-  low_stock_grams: number;
   active: boolean;
+  /** Always at least one. */
   variants: Variant[];
+}
+
+export interface VariantInput {
+  /** null for a variant created in this request. */
+  id: number | null;
+  label: string;
+  price: number;
+  cost: number;
+  low_stock: number;
+  /** Pieces on hand when the variant is created; ignored for existing ones. */
+  opening_stock: number;
 }
 
 export interface ProductInput {
   name: string;
   category_id: number;
-  sell_by_weight: boolean;
-  price_per_kg: number;
-  cost_per_kg: number;
-  low_stock_grams: number;
-  variants: Variant[];
+  variants: VariantInput[];
 }
 
 export interface CartItemInput {
-  product_id: number;
-  variant_id: number | null;
+  variant_id: number;
   quantity: number;
-  weight_grams: number | null;
 }
 
 export interface SaleItem {
   product_name: string;
   variant_label: string | null;
   quantity: number;
-  weight_grams: number;
   unit_price: number;
   line_total: number;
 }
@@ -111,9 +114,9 @@ export interface ReportSummary {
   revenue: number;
   cost: number;
   profit: number;
-  grams_sold: number;
+  units_sold: number;
   purchases_cost: number;
-  purchases_grams: number;
+  purchases_units: number;
   supplier_paid: number;
   by_payment: { method: PaymentMethod; count: number; total: number }[];
 }
@@ -126,11 +129,11 @@ export interface DailyRow {
 }
 
 export interface ProductReportRow {
-  product_id: number;
+  variant_id: number;
   name: string;
+  variant_label: string;
   category_name: string;
   units: number;
-  grams: number;
   revenue: number;
   cost: number;
   profit: number;
@@ -141,7 +144,7 @@ export interface CategoryReportRow {
   name: string;
   parent_id: number | null;
   parent_name: string | null;
-  grams: number;
+  units: number;
   revenue: number;
   profit: number;
 }
@@ -162,7 +165,8 @@ export interface MovementRow {
   id: number;
   created_at: string;
   product_name: string;
-  change_grams: number;
+  variant_label: string;
+  change_qty: number;
   reason: MovementReason;
   cost_total: number | null;
   note: string | null;
@@ -196,9 +200,10 @@ export interface SupplierInput {
 }
 
 export interface PurchaseItemInput {
-  product_id: number;
-  grams: number;
-  cost_total: number;
+  variant_id: number;
+  quantity: number;
+  /** Buy price of one piece. */
+  unit_cost: number;
 }
 
 export interface PurchaseInput {
@@ -217,7 +222,7 @@ export interface PurchaseSummary {
   supplier_name: string;
   invoice_no: string;
   items_count: number;
-  grams: number;
+  pieces: number;
   total: number;
   /** Paid while receiving the invoice; later payments go to the supplier's account. */
   paid: number;
@@ -226,7 +231,7 @@ export interface PurchaseSummary {
 
 export interface Purchase extends PurchaseSummary {
   note: string;
-  items: { product_name: string; grams: number; cost_total: number }[];
+  items: { product_name: string; variant_label: string; quantity: number; cost_total: number }[];
 }
 
 export interface StatementRow {
@@ -243,7 +248,7 @@ export interface SupplierReportRow {
   name: string;
   purchases_count: number;
   purchases_total: number;
-  grams: number;
+  pieces: number;
   paid: number;
   balance: number;
 }

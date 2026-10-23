@@ -31,10 +31,10 @@ export function CategoriesPage() {
   };
 
   const row = (c: Category, sub: boolean) => (
-    <li key={c.id} className={`group flex items-center gap-3 px-5 py-3 hover:bg-frost ${sub ? "ps-12" : ""}`}>
-      {sub && <CornerDownLeft className="size-4 -scale-x-100 text-mist/60" />}
+    <li key={c.id} className={`group flex items-center gap-3 px-5 py-3 hover:bg-glass ${sub ? "ps-12" : ""}`}>
+      {sub && <CornerDownLeft className="size-4 -scale-x-100 text-dim/60" />}
       <span className={sub ? "text-ink-2" : "font-semibold"}>{c.name}</span>
-      <span className="text-xs text-mist">{c.product_count} منتج</span>
+      <span className="text-xs text-dim">{c.product_count} منتج</span>
       <div className="ms-auto flex gap-1 opacity-60 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         {!sub && (
           <Button tone="ghost" size="sm" onClick={() => setEditing({ category: null, parentId: c.id })}>
@@ -71,8 +71,8 @@ export function CategoriesPage() {
       <Panel className="overflow-hidden">
         {parents.length === 0 ? (
           <Empty title="لا توجد تصنيفات بعد">
-            ابدأ بتصنيفات رئيسية مثل «أسماك» و«جمبري» و«مأكولات بحرية»، ثم أضف تحتها تصنيفات فرعية مثل «أسماك
-            نيلية».
+            ابدأ بتصنيفات رئيسية مثل «موبايلات» و«إكسسوارات» و«تابلت»، ثم أضف تحتها الماركات كتصنيفات فرعية
+            مثل «سامسونج» و«شاومي».
           </Empty>
         ) : (
           <ul className="divide-y divide-line">

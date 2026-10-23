@@ -13,7 +13,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let conn = db::open(&dir.join("fish-pos.db"))?;
+            let conn = db::open(&dir.join("mobile-pos.db"))?;
             app.manage(state::AppState::new(conn));
             Ok(())
         })

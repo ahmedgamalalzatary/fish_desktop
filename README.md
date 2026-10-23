@@ -1,6 +1,6 @@
-# Fish POS — نقطة بيع الأسماك
+# Mobile POS — نقطة بيع الموبايلات
 
-A point-of-sale desktop app for a single fish shop (one device, no branches), built with
+A point-of-sale desktop app for a single mobile phone shop (one device, no branches), built with
 **Tauri 2 + React + Tailwind + SQLite**. The interface is Arabic (RTL).
 
 ## Features
@@ -9,15 +9,14 @@ A point-of-sale desktop app for a single fish shop (one device, no branches), bu
   - **Admin (مدير):** manages products, categories, stock, employees, settings and reports, and can also sell.
   - **Cashier (كاشير):** sales screen only, plus reprinting their own receipts from today.
   - Roles are enforced in the Rust backend on every command, not only in the UI.
-- **Products** have a category, a price per kg and a cost per kg, plus optional
-  **fixed-weight options** (e.g. ¼ kg, ½ kg, 1 kg box), each with its own sell and cost price.
-  A product can be sold by entered weight, by fixed weights, or both.
-- **Categories** have one level of sub-categories (e.g. أسماك ← أسماك نيلية).
-- **Stock** is tracked per product in grams. Fixed-weight sales deduct their weight.
-  Goods come in through purchase invoices; admins also record stock-takes.
-  Overselling is blocked unless enabled in settings.
-- **Purchases & suppliers:** a purchase invoice has a supplier and several products (weight + cost each),
-  adds them to stock, and can update each product's cost per kg. Pay in full, in part, or on credit;
+- **Products** are sold by the piece. A product either has one price (a charger, a cover), or
+  **options** such as storage and colour (e.g. 128GB أسود, 256GB أزرق), each with its own
+  sell price, buy price, stock and low-stock alert.
+- **Categories** have one level of sub-categories (e.g. موبايلات ← سامسونج).
+- **Stock** is counted in pieces per option. Goods come in through purchase invoices;
+  admins also record stock-takes. Overselling is blocked unless enabled in settings.
+- **Purchases & suppliers:** a purchase invoice has a supplier and several items (quantity + buy price each),
+  adds them to stock, and can update each item's buy price. Pay in full, in part, or on credit;
   the unpaid part goes to the supplier's balance. Record later payments, view and print a supplier
   statement, and delete an invoice entered by mistake (its stock is taken back out).
 - **Sales:** cash (with change calculation), card or e-wallet. 80 mm thermal receipt.
@@ -55,8 +54,8 @@ The installer is written to `src-tauri/target/release/bundle/nsis/`.
 
 ## Where data lives
 
-The database is `%APPDATA%\com.fishshop.pos\fish-pos.db`. Money is stored as integer
-cents and weight as integer grams, so totals never drift from rounding.
+The database is `%APPDATA%\com.mobileshop.pos\mobile-pos.db`. Money is stored as integer
+cents, so totals never drift from rounding.
 
 ## Project layout
 

@@ -7,7 +7,6 @@ import {
   Search,
   Smartphone,
   Trash2,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportButtons } from "../components/ExportButtons";
@@ -16,38 +15,37 @@ import { ReportDocument } from "../components/ReportDocument";
 import { cx } from "../lib/cx";
 import { section } from "../lib/document";
 import { useResource } from "../lib/useResource";
-import { Button, Empty, Keypad, Lcd, Modal, Segmented } from "../components/ui";
+import { Button, Empty, Keypad, Modal, Screen, Segmented } from "../components/ui";
 import { api } from "../lib/api";
 import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatWeight,
+  formatPieces,
   isoDate,
-  parseKg,
   parseMoney,
   paymentLabels,
-  priceForGrams,
 } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import type { PaymentMethod, Product, Sale, SaleSummary, Variant } from "../lib/types";
 
 interface CartLine {
-  key: string;
   product: Product;
-  variant: Variant | null;
+  variant: Variant;
   quantity: number;
-  grams: number;
 }
 
-const lineTotal = (l: CartLine) =>
-  l.variant ? l.variant.price * l.quantity : priceForGrams(l.product.price_per_kg, l.grams);
+const lineTotal = (l: CartLine) => l.variant.price * l.quantity;
 
 const paymentIcons = { cash: Banknote, card: CreditCard, wallet: Smartphone };
 
+/** A product sold without options has one variant with no label. */
+const hasOptions = (p: Product) => p.variants.length > 1 || p.variants[0]?.label !== "";
+
 export function PosPage() {
   const { settings } = useSession();
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [topCategory, setTopCategory] = useState<number | null>(null);
   const [subCategory, setSubCategory] = useState<number | null>(null);
@@ -69,47 +67,54 @@ export function PosPage() {
   const subCategories = categories.filter((c) => c.parent_id !== null && c.parent_id === topCategory);
 
   const visible = useMemo(() => {
-    const q = query.trim();
+    const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (q && !p.name.includes(q)) return false;
+      if (
+        q &&
+        !p.name.toLowerCase().includes(q) &&
+        !p.variants.some((v) => v.label.toLowerCase().includes(q))
+      )
+        return false;
       if (subCategory !== null) return p.category_id === subCategory;
       if (topCategory !== null) return p.category_id === topCategory || p.parent_category_id === topCategory;
       return true;
     });
   }, [products, query, topCategory, subCategory]);
 
-  // Weight already in the cart per product, so the stock shown on tiles stays honest.
-  const reserved = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const l of cart) {
-      const g = l.variant ? l.variant.weight_grams * l.quantity : l.grams;
-      m.set(l.product.id, (m.get(l.product.id) ?? 0) + g);
-    }
-    return m;
-  }, [cart]);
+  // Pieces already in the cart, so the stock shown stays honest.
+  const inCart = useMemo(() => new Map(cart.map((l) => [l.variant.id, l.quantity])), [cart]);
+  const available = useCallback((v: Variant) => v.stock - (inCart.get(v.id) ?? 0), [inCart]);
 
   const total = cart.reduce((sum, l) => sum + lineTotal(l), 0);
+  const pieces = cart.reduce((sum, l) => sum + l.quantity, 0);
 
-  const addLine = (product: Product, variant: Variant | null, quantity: number, grams: number) => {
+  const addLine = (product: Product, variant: Variant, quantity: number) => {
+    if (!allowNegative && available(variant) < quantity) {
+      toast(`لا يوجد مخزون كافٍ من «${product.name}${variant.label ? ` ${variant.label}` : ""}»`, "error");
+      return;
+    }
     setCart((c) => {
-      if (variant) {
-        const key = `${product.id}:${variant.id}`;
-        const existing = c.find((l) => l.key === key);
-        if (existing) return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
-        return [...c, { key, product, variant, quantity, grams: 0 }];
-      }
-      return [...c, { key: `${product.id}:w:${Date.now()}`, product, variant: null, quantity: 1, grams }];
+      const existing = c.find((l) => l.variant.id === variant.id);
+      if (existing) return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
+      return [...c, { product, variant, quantity }];
     });
     setPicking(null);
     searchRef.current?.focus();
   };
 
-  const changeQuantity = (key: string, delta: number) =>
+  const pick = (p: Product) => (hasOptions(p) ? setPicking(p) : addLine(p, p.variants[0], 1));
+
+  const changeQuantity = (line: CartLine, delta: number) => {
+    if (delta > 0 && !allowNegative && available(line.variant) < delta) {
+      toast("هذا كل المتوفر في المخزون", "error");
+      return;
+    }
     setCart((c) =>
       c.flatMap((l) =>
-        l.key !== key ? [l] : l.quantity + delta <= 0 ? [] : [{ ...l, quantity: l.quantity + delta }],
+        l !== line ? [l] : l.quantity + delta <= 0 ? [] : [{ ...l, quantity: l.quantity + delta }],
       ),
     );
+  };
 
   const finishSale = (sale: Sale) => {
     setCheckingOut(false);
@@ -125,14 +130,14 @@ export function PosPage() {
         <div className="flex flex-col gap-3 border-b border-line bg-white px-6 pt-5 pb-4">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute start-3 top-1/2 size-5 -translate-y-1/2 text-mist" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 size-5 -translate-y-1/2 text-dim" />
               <input
                 ref={searchRef}
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ابحث باسم المنتج"
-                className="h-12 w-full rounded-xl border border-line bg-ice ps-11 pe-4 text-base select-text placeholder:text-mist/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
+                placeholder="ابحث بالموديل أو السعة أو اللون"
+                className="h-12 w-full rounded-xl border border-line bg-alu ps-11 pe-4 text-base select-text placeholder:text-dim/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
               />
             </div>
             <Button tone="outline" size="md" className="h-12" onClick={() => setShowToday(true)}>
@@ -157,7 +162,7 @@ export function PosPage() {
           {subCategories.length > 0 && (
             <div className="flex flex-wrap gap-2 border-t border-dashed border-line pt-3">
               <Chip small active={subCategory === null} onClick={() => setSubCategory(null)}>
-                كل الأنواع
+                كل الماركات
               </Chip>
               {subCategories.map((c) => (
                 <Chip key={c.id} small active={subCategory === c.id} onClick={() => setSubCategory(c.id)}>
@@ -176,15 +181,15 @@ export function PosPage() {
                 : "جرّب اسماً آخر أو اختر تصنيفاً مختلفاً."}
             </Empty>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
               {visible.map((p) => (
-                <ProductTag
+                <ProductCard
                   key={p.id}
                   product={p}
-                  available={p.stock_grams - (reserved.get(p.id) ?? 0)}
+                  available={available}
                   allowNegative={allowNegative}
                   currency={settings.currency}
-                  onPick={() => setPicking(p)}
+                  onPick={() => pick(p)}
                 />
               ))}
             </div>
@@ -206,7 +211,7 @@ export function PosPage() {
 
         <div className="flex-1 overflow-y-auto px-5">
           {cart.length === 0 ? (
-            <p className="py-16 text-center text-sm leading-7 text-mist">
+            <p className="py-16 text-center text-sm leading-7 text-dim">
               اختر منتجاً من القائمة
               <br />
               ليُضاف إلى الفاتورة.
@@ -214,49 +219,44 @@ export function PosPage() {
           ) : (
             <ul className="divide-y divide-line">
               {cart.map((l) => (
-                <li key={l.key} className="flex items-center gap-3 py-3">
+                <li key={l.variant.id} className="flex items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{l.product.name}</div>
-                    <div className="text-sm text-mist">
-                      {l.variant
-                        ? `${l.variant.label} · ${formatAmount(l.variant.price)}`
-                        : `${formatWeight(l.grams)} × ${formatAmount(l.product.price_per_kg)}/كجم`}
+                    {/* dir="auto" keeps English model names cut at their end, not their start. */}
+                    <div dir="auto" className="truncate text-right font-medium">
+                      {l.product.name}
+                    </div>
+                    <div className="truncate text-sm text-dim">
+                      {[l.variant.label, l.quantity > 1 && `${formatAmount(l.variant.price)} للقطعة`]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </div>
                   </div>
-                  {l.variant ? (
-                    <div className="flex items-center gap-1 rounded-lg bg-ice p-0.5">
-                      <Button
-                        tone="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => changeQuantity(l.key, 1)}
-                        aria-label="زيادة"
-                      >
-                        <Plus className="size-4" />
-                      </Button>
-                      <span className="w-6 text-center font-medium">{l.quantity}</span>
-                      <Button
-                        tone="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => changeQuantity(l.key, -1)}
-                        aria-label="نقص"
-                      >
-                        <Minus className="size-4" />
-                      </Button>
-                    </div>
-                  ) : (
+                  <div className="flex items-center gap-1 rounded-lg bg-alu p-0.5">
                     <Button
                       tone="ghost"
                       size="icon"
-                      className="size-7 text-mist"
-                      onClick={() => changeQuantity(l.key, -1)}
-                      aria-label="حذف"
+                      className="size-7"
+                      onClick={() => changeQuantity(l, 1)}
+                      aria-label="زيادة"
                     >
-                      <X className="size-4" />
+                      <Plus className="size-4" />
                     </Button>
-                  )}
-                  <div className="w-20 text-end font-semibold">{formatAmount(lineTotal(l))}</div>
+                    <span className="w-6 text-center font-medium">{l.quantity}</span>
+                    <Button
+                      tone="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => changeQuantity(l, -1)}
+                      aria-label={l.quantity === 1 ? "حذف" : "نقص"}
+                    >
+                      {l.quantity === 1 ? (
+                        <Trash2 className="size-4 text-alert" />
+                      ) : (
+                        <Minus className="size-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <div className="w-24 text-end font-semibold">{formatAmount(lineTotal(l))}</div>
                 </li>
               ))}
             </ul>
@@ -264,8 +264,8 @@ export function PosPage() {
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-line p-5">
-          <Lcd
-            label={`الإجمالي (${cart.length} صنف)`}
+          <Screen
+            label={`الإجمالي · ${formatPieces(pieces)}`}
             value={formatAmount(total)}
             unit={settings.currency}
             size="xl"
@@ -299,9 +299,9 @@ export function PosPage() {
       </aside>
 
       {picking && (
-        <AddItemModal
+        <PickVariantModal
           product={picking}
-          available={picking.stock_grams - (reserved.get(picking.id) ?? 0)}
+          available={available}
           allowNegative={allowNegative}
           currency={settings.currency}
           onAdd={addLine}
@@ -356,8 +356,26 @@ function Chip({
   );
 }
 
-/** A product tile styled after the price tags stuck into the ice on a fish counter. */
-function ProductTag({
+/** Stock as signal bars: full when well stocked, one bar when low, none when out. */
+function StockBars({ level }: { level: 0 | 1 | 2 | 3 }) {
+  return (
+    <span className="inline-flex items-end gap-[2px]" aria-hidden>
+      {[1, 2, 3].map((bar) => (
+        <span
+          key={bar}
+          className={cx(
+            "w-[3px] rounded-[1px]",
+            ["h-1.5", "h-2.5", "h-3.5"][bar - 1],
+            bar <= level ? (level === 1 ? "bg-alert" : "bg-ink-2") : "bg-line",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** A model on the display shelf: name, its options, a price and how many are left. */
+function ProductCard({
   product: p,
   available,
   allowNegative,
@@ -365,62 +383,69 @@ function ProductTag({
   onPick,
 }: {
   product: Product;
-  available: number;
+  available: (v: Variant) => number;
   allowNegative: boolean;
   currency: string;
   onPick: () => void;
 }) {
-  const out = available <= 0;
-  const low = !out && p.low_stock_grams > 0 && available <= p.low_stock_grams;
-  const fromPrice = p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0;
+  const left = p.variants.reduce((s, v) => s + Math.max(available(v), 0), 0);
+  const out = left <= 0;
+  const low = !out && p.variants.every((v) => available(v) <= 0 || available(v) <= v.low_stock);
+  const prices = p.variants.map((v) => v.price);
+  const fromPrice = Math.min(...prices);
+  const options = hasOptions(p) ? p.variants : [];
 
   return (
     <button
       type="button"
       onClick={onPick}
       disabled={out && !allowNegative}
-      className="group relative flex min-h-36 flex-col rounded-xl border border-line bg-white p-4 text-start transition-colors hover:border-ink-3/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-3 disabled:opacity-50"
+      className="group flex min-h-40 flex-col rounded-2xl border border-line bg-white p-4 text-start transition-colors hover:border-ink-3/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-3 disabled:opacity-50"
     >
-      <div className="text-xs text-mist">{p.category_name}</div>
+      <div className="text-xs text-dim">{p.category_name}</div>
       <div className="mt-0.5 text-lg leading-7 font-semibold">{p.name}</div>
-
-      <div className="mt-auto flex items-end justify-between gap-2 pt-4">
-        <div className={cx("text-xs leading-5", out || low ? "font-medium text-gill" : "text-mist")}>
-          {out ? (
-            "نفد المخزون"
-          ) : (
-            <>
-              {low && <div>منخفض</div>}
-              {formatWeight(available)}
-            </>
+      {options.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {options.slice(0, 3).map((v) => (
+            <span
+              key={v.id}
+              className={cx(
+                "rounded-md border border-line px-1.5 py-0.5 text-[11px] leading-4 text-ink-2",
+                available(v) <= 0 && "text-dim line-through",
+              )}
+            >
+              {v.label}
+            </span>
+          ))}
+          {options.length > 3 && (
+            <span className="rounded-md bg-alu px-1.5 py-0.5 text-[11px] leading-4 text-ink-2">
+              +{options.length - 3}
+            </span>
           )}
         </div>
+      )}
 
-        <div className="relative -me-1 rounded-md bg-tag px-2.5 py-1.5 text-ink shadow-[0_1px_0_var(--color-tag-deep)]">
-          <span
-            className="absolute start-1.5 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-white/80"
-            aria-hidden
-          />
-          <div className="ps-2.5 text-end leading-tight">
-            {p.sell_by_weight ? (
-              <>
-                <span className="text-lg font-bold">{formatAmount(p.price_per_kg)}</span>
-                <span className="block text-[11px]">{currency} / كجم</span>
-              </>
-            ) : (
-              <>
-                <span className="block text-[11px]">يبدأ من</span>
-                <span className="text-lg font-bold">{formatAmount(fromPrice)}</span>
-              </>
-            )}
-          </div>
+      <div className="mt-auto flex items-end justify-between gap-2 pt-4">
+        <div
+          className={cx(
+            "flex items-center gap-1.5 text-xs",
+            out || low ? "font-medium text-alert" : "text-dim",
+          )}
+        >
+          <StockBars level={out ? 0 : low ? 1 : left > 5 ? 3 : 2} />
+          {out ? "نفد المخزون" : formatPieces(left)}
+        </div>
+        <div className="text-end leading-tight">
+          {new Set(prices).size > 1 && <span className="block text-[11px] text-dim">يبدأ من</span>}
+          <span className="font-display text-xl font-normal">{formatAmount(fromPrice)}</span>
+          <span className="ms-1 text-[11px] text-dim">{currency}</span>
         </div>
       </div>
     </button>
   );
 }
 
-function AddItemModal({
+function PickVariantModal({
   product,
   available,
   allowNegative,
@@ -429,29 +454,20 @@ function AddItemModal({
   onClose,
 }: {
   product: Product;
-  available: number;
+  available: (v: Variant) => number;
   allowNegative: boolean;
   currency: string;
-  onAdd: (product: Product, variant: Variant | null, quantity: number, grams: number) => void;
+  onAdd: (product: Product, variant: Variant, quantity: number) => void;
   onClose: () => void;
 }) {
-  const hasVariants = product.variants.length > 0;
-  const [mode, setMode] = useState<"variant" | "weight">(hasVariants ? "variant" : "weight");
-  const [variant, setVariant] = useState<Variant | null>(product.variants[0] ?? null);
+  const [variant, setVariant] = useState<Variant>(
+    () => product.variants.find((v) => allowNegative || available(v) > 0) ?? product.variants[0],
+  );
   const [quantity, setQuantity] = useState(1);
-  const [kg, setKg] = useState("");
+  const left = available(variant);
+  const overStock = !allowNegative && quantity > left;
 
-  const grams = mode === "weight" ? (parseKg(kg) ?? 0) : (variant?.weight_grams ?? 0) * quantity;
-  const price =
-    mode === "weight" ? priceForGrams(product.price_per_kg, grams) : (variant?.price ?? 0) * quantity;
-  const overStock = !allowNegative && grams > available;
-  const canAdd = grams > 0 && !overStock && (mode === "weight" || variant !== null);
-
-  const submit = () => {
-    if (!canAdd) return;
-    if (mode === "weight") onAdd(product, null, 1, grams);
-    else onAdd(product, variant, quantity, 0);
-  };
+  const submit = () => !overStock && onAdd(product, variant, quantity);
 
   return (
     <Modal
@@ -460,14 +476,14 @@ function AddItemModal({
       width="max-w-2xl"
       footer={
         <>
-          <span className={cx("me-auto text-sm", overStock ? "font-medium text-gill" : "text-mist")}>
+          <span className={cx("me-auto text-sm", overStock ? "font-medium text-alert" : "text-dim")}>
             {overStock ? "الكمية أكبر من المتوفر: " : "المتوفر: "}
-            {formatWeight(available)}
+            {formatPieces(left)}
           </span>
           <Button tone="outline" onClick={onClose}>
             إلغاء
           </Button>
-          <Button onClick={submit} disabled={!canAdd}>
+          <Button onClick={submit} disabled={overStock}>
             إضافة إلى الفاتورة
           </Button>
         </>
@@ -480,92 +496,61 @@ function AddItemModal({
         }}
         className="flex flex-col gap-5"
       >
-        {hasVariants && product.sell_by_weight && (
-          <Segmented
-            size="lg"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "variant", label: "أوزان جاهزة" },
-              { value: "weight", label: "بالكيلو" },
-            ]}
-          />
-        )}
-
-        {mode === "variant" ? (
-          <>
-            <div className="grid grid-cols-3 gap-3">
-              {product.variants.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setVariant(v)}
-                  aria-pressed={variant?.id === v.id}
-                  className={cx(
-                    "flex flex-col items-start gap-1 rounded-xl border-2 p-3 text-start transition-colors",
-                    variant?.id === v.id
-                      ? "border-ink bg-white"
-                      : "border-transparent bg-white hover:border-line",
-                  )}
-                >
-                  <span className="font-semibold">{v.label}</span>
-                  <span className="text-xs text-mist">{formatWeight(v.weight_grams)}</span>
-                  <span className="mt-1 rounded bg-tag px-2 py-0.5 text-sm font-bold">
-                    {formatAmount(v.price)}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium text-ink-2">العدد</span>
-              <div className="flex items-center gap-2 rounded-xl bg-white p-1">
-                <Button
-                  tone="ghost"
-                  size="icon"
-                  className="size-11"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  aria-label="زيادة"
-                >
-                  <Plus className="size-5" />
-                </Button>
-                <span className="w-10 text-center text-2xl font-light">{quantity}</span>
-                <Button
-                  tone="ghost"
-                  size="icon"
-                  className="size-11"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  aria-label="نقص"
-                >
-                  <Minus className="size-5" />
-                </Button>
-              </div>
-              <Lcd className="flex-1" size="md" label="السعر" value={formatAmount(price)} unit={currency} />
-            </div>
-          </>
-        ) : (
-          <div className="grid grid-cols-2 gap-5">
-            <div className="flex flex-col gap-3">
-              <Lcd label="الوزن" value={kg || "0.000"} unit="كجم" />
-              <Lcd
-                label={`السعر · ${formatAmount(product.price_per_kg)} للكيلو`}
-                value={formatAmount(price)}
-                unit={currency}
-              />
-              <input
-                dir="ltr"
-                inputMode="decimal"
-                value={kg}
-                onChange={(e) =>
-                  /^[0-9٠-٩]*[.٫]?[0-9٠-٩]{0,3}$/.test(e.target.value) && setKg(e.target.value)
-                }
-                placeholder="اكتب الوزن بالكيلو"
-                aria-label="الوزن بالكيلو"
-                className="h-11 rounded-lg border border-line bg-white px-3 text-center text-lg select-text focus:border-ink-3 focus:outline-none"
-              />
-            </div>
-            <Keypad value={kg} onChange={setKg} maxDecimals={3} />
+        <div className="grid grid-cols-3 gap-3">
+          {product.variants.map((v) => {
+            const n = available(v);
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => (setVariant(v), setQuantity(1))}
+                disabled={n <= 0 && !allowNegative}
+                aria-pressed={variant.id === v.id}
+                className={cx(
+                  "flex flex-col items-start gap-1 rounded-xl border-2 bg-white p-3 text-start transition-colors disabled:opacity-45",
+                  variant.id === v.id ? "border-ink" : "border-transparent hover:border-line",
+                )}
+              >
+                <span className="font-semibold">{v.label}</span>
+                <span className="font-display text-lg">{formatAmount(v.price)}</span>
+                <span className={cx("text-xs", n <= 0 ? "text-alert" : "text-dim")}>
+                  {n <= 0 ? "نفد" : `متوفر ${formatPieces(n)}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-ink-2">العدد</span>
+          <div className="flex items-center gap-2 rounded-xl bg-white p-1">
+            <Button
+              tone="ghost"
+              size="icon"
+              className="size-11"
+              onClick={() => setQuantity((q) => q + 1)}
+              aria-label="زيادة"
+            >
+              <Plus className="size-5" />
+            </Button>
+            <span className="w-10 text-center font-display text-2xl font-light">{quantity}</span>
+            <Button
+              tone="ghost"
+              size="icon"
+              className="size-11"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              aria-label="نقص"
+            >
+              <Minus className="size-5" />
+            </Button>
           </div>
-        )}
+          <Screen
+            className="flex-1"
+            size="md"
+            label="السعر"
+            value={formatAmount(variant.price * quantity)}
+            unit={currency}
+          />
+        </div>
         <button type="submit" hidden />
       </form>
     </Modal>
@@ -605,12 +590,7 @@ function CheckoutModal({
     setBusy(true);
     try {
       const sale = await api.createSale(
-        cart.map((l) => ({
-          product_id: l.product.id,
-          variant_id: l.variant?.id ?? null,
-          quantity: l.quantity,
-          weight_grams: l.variant ? null : l.grams,
-        })),
+        cart.map((l) => ({ variant_id: l.variant.id, quantity: l.quantity })),
         payment,
         paid,
       );
@@ -645,20 +625,20 @@ function CheckoutModal({
         className={cx("grid gap-5", cash && "grid-cols-2")}
       >
         <div className="flex flex-col gap-3">
-          <Lcd label="المطلوب" value={formatAmount(total)} unit={settings.currency} />
+          <Screen label="المطلوب" value={formatAmount(total)} unit={settings.currency} />
           {cash && (
             <>
-              <Lcd
+              <Screen
                 label="المدفوع"
                 value={paidText === "" ? formatAmount(total) : paidText}
                 unit={settings.currency}
                 size="md"
               />
-              <Lcd
+              <Screen
                 label={change < 0 ? "المبلغ ناقص" : "الباقي للعميل"}
                 value={formatAmount(Math.abs(change))}
                 unit={settings.currency}
-                className={change < 0 ? "text-[#ff9b93]" : ""}
+                warn={change < 0}
               />
               <div className="grid grid-cols-2 gap-2">
                 <Button tone="outline" className="justify-center" onClick={() => setPaidText("")}>
@@ -677,7 +657,7 @@ function CheckoutModal({
               </div>
             </>
           )}
-          {!cash && <p className="text-sm text-mist">تأكد من نجاح العملية على جهاز الدفع قبل التأكيد.</p>}
+          {!cash && <p className="text-sm text-dim">تأكد من نجاح العملية على جهاز الدفع قبل التأكيد.</p>}
         </div>
         {cash && <Keypad value={paidText} onChange={setPaidText} maxDecimals={2} />}
         <button type="submit" hidden />
@@ -781,7 +761,7 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
         <Empty title="لا توجد فواتير اليوم بعد" />
       ) : (
         <>
-          <Lcd
+          <Screen
             className="mb-4"
             size="md"
             label={`${sales.length} فاتورة`}
@@ -794,14 +774,14 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => api.getSale(s.id).then(setOpen, (e) => toast(errorMessage(e), "error"))}
-                  className="flex w-full items-center gap-4 px-4 py-3 text-start hover:bg-frost"
+                  className="flex w-full items-center gap-4 px-4 py-3 text-start hover:bg-glass"
                 >
                   <span className="w-16 font-medium">#{s.id}</span>
-                  <span className="text-sm text-mist" dir="ltr">
+                  <span className="text-sm text-dim" dir="ltr">
                     {formatDateTime(s.created_at).split(" ")[1]}
                   </span>
-                  <span className="text-sm text-mist">{paymentLabels[s.payment_method]}</span>
-                  <span className="text-sm text-mist">{s.cashier_name}</span>
+                  <span className="text-sm text-dim">{paymentLabels[s.payment_method]}</span>
+                  <span className="text-sm text-dim">{s.cashier_name}</span>
                   <span className="ms-auto font-semibold">{formatAmount(s.total)}</span>
                 </button>
               </li>

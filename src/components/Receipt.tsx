@@ -1,4 +1,4 @@
-import { formatAmount, formatDateTime, formatWeight, paymentLabels } from "../lib/format";
+import { formatAmount, formatDateTime, paymentLabels } from "../lib/format";
 import type { Sale, Settings } from "../lib/types";
 
 /** Receipt layout, sized for 80mm thermal paper and also used for the on-screen preview. */
@@ -7,7 +7,7 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
   return (
     <div className="mx-auto w-[72mm] bg-white px-1 py-3 text-[12px] leading-5 text-black">
       <div className="text-center">
-        <div className="font-sign text-2xl leading-8">{settings.shop_name}</div>
+        <div className="font-display text-2xl leading-8">{settings.shop_name}</div>
         {settings.shop_address && <div>{settings.shop_address}</div>}
         {settings.shop_phone && <div dir="ltr">{settings.shop_phone}</div>}
       </div>
@@ -24,9 +24,8 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
               <td className="py-1">
                 <div className="font-semibold">{item.product_name}</div>
                 <div className="text-[11px]">
-                  {item.variant_label
-                    ? `${item.variant_label} × ${item.quantity} @ ${formatAmount(item.unit_price)}`
-                    : `${formatWeight(item.weight_grams)} @ ${formatAmount(item.unit_price)}/كجم`}
+                  {item.variant_label && `${item.variant_label} · `}
+                  {item.quantity} × {formatAmount(item.unit_price)}
                 </div>
               </td>
               <td className="py-1 text-end font-semibold whitespace-nowrap">

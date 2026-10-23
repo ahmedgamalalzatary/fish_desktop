@@ -48,7 +48,7 @@ export function EmployeesPage() {
       cell: (u) => (
         <span className="font-medium">
           {u.name}
-          {u.id === me.id && <span className="ms-2 text-xs font-normal text-mist">(أنت)</span>}
+          {u.id === me.id && <span className="ms-2 text-xs font-normal text-dim">(أنت)</span>}
         </span>
       ),
     },
@@ -64,7 +64,7 @@ export function EmployeesPage() {
     { header: "عدد الفواتير", numeric: true, cell: (u) => u.sales_count },
     {
       header: "تاريخ الإضافة",
-      cell: (u) => <span className="text-mist">{formatDateTime(u.created_at).split(" ")[0]}</span>,
+      cell: (u) => <span className="text-dim">{formatDateTime(u.created_at).split(" ")[0]}</span>,
     },
     {
       header: "",

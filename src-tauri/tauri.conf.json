@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Fish POS",
+  "productName": "Mobile POS",
   "version": "0.2.0",
-  "identifier": "com.fishshop.pos",
+  "identifier": "com.mobileshop.pos",
   "build": {
     "beforeDevCommand": "npm run dev:web",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "نقطة بيع الأسماك",
+        "title": "نقطة بيع الموبايلات",
         "width": 1366,
         "height": 820,
         "minWidth": 1100,

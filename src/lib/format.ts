@@ -1,7 +1,6 @@
 import type { MovementReason, PaymentMethod } from "./types";
 
 const amount = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const kilos = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 
 /** 18050 → "180.50" */
 export const formatAmount = (cents: number) => amount.format(cents / 100);
@@ -10,14 +9,18 @@ export const formatAmount = (cents: number) => amount.format(cents / 100);
 export const formatMoney = (cents: number, currency: string) =>
   currency ? `${formatAmount(cents)} ${currency}` : formatAmount(cents);
 
-/** 1250 → "1.25 كجم", 250 → "250 جم" */
-export function formatWeight(grams: number): string {
-  if (Math.abs(grams) < 1000 && grams !== 0) return `${grams} جم`;
-  return `${kilos.format(grams / 1000)} كجم`;
+/** Arabic counting of pieces: 1 → "قطعة واحدة", 2 → "قطعتان", 5 → "5 قطع", 12 → "12 قطعة". */
+export function formatPieces(count: number): string {
+  const n = Math.abs(count);
+  if (n === 1) return count < 0 ? "-1 قطعة" : "قطعة واحدة";
+  if (n === 2) return count < 0 ? "-2 قطعة" : "قطعتان";
+  if (n >= 3 && n <= 10) return `${count} قطع`;
+  return `${count} قطعة`;
 }
 
-/** Plain kilograms for inputs and the scale readout: 1250 → "1.250" */
-export const gramsToKg = (grams: number) => (grams / 1000).toFixed(3);
+/** "iPhone 15", "128GB" → "iPhone 15 — 128GB"; a product without options keeps its plain name. */
+export const itemName = (product: string, label: string | null | undefined) =>
+  label ? `${product} — ${label}` : product;
 
 /** "12.5" → 1250. Returns null for anything that is not a non-negative number. */
 export function parseMoney(text: string): number | null {
@@ -25,10 +28,10 @@ export function parseMoney(text: string): number | null {
   return value === null ? null : Math.round(value * 100);
 }
 
-/** Kilograms typed by the user → grams. "1.25" → 1250 */
-export function parseKg(text: string): number | null {
+/** A whole number of pieces. "3" → 3, "٤" → 4. Returns null for fractions or anything else. */
+export function parseCount(text: string): number | null {
   const value = parseDecimal(text);
-  return value === null ? null : Math.round(value * 1000);
+  return value === null || !Number.isInteger(value) ? null : value;
 }
 
 const easternDigits = "٠١٢٣٤٥٦٧٨٩";
@@ -42,9 +45,6 @@ function parseDecimal(text: string): number | null {
   if (!/^\d*\.?\d+$|^\d+\.$/.test(normalized)) return null;
   return Number(normalized);
 }
-
-/** Same rounding as the backend, so the cart preview always matches the receipt. */
-export const priceForGrams = (perKg: number, grams: number) => Math.floor((perKg * grams + 500) / 1000);
 
 export const paymentLabels: Record<PaymentMethod, string> = {
   cash: "نقدي",

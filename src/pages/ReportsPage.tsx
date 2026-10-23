@@ -6,7 +6,7 @@ import { ReportDocument } from "../components/ReportDocument";
 import { cx } from "../lib/cx";
 import { section, type DocumentSection } from "../lib/document";
 import { purchaseColumns, supplierReportColumns } from "../lib/purchases";
-import { stockColumns, stockValue } from "../lib/stock";
+import { stockColumns, stockRows, stockValue, type StockRow } from "../lib/stock";
 import { useResource } from "../lib/useResource";
 import { Empty, Input, PageHeader, Panel, Select, Toggle } from "../components/ui";
 import { api } from "../lib/api";
@@ -14,8 +14,9 @@ import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatWeight,
+  formatPieces,
   isoDate,
+  itemName,
   movementLabels,
   paymentLabels,
 } from "../lib/format";
@@ -27,7 +28,6 @@ import type {
   DailyRow,
   MovementReason,
   MovementRow,
-  Product,
   ProductReportRow,
   PurchaseSummary,
   ReportSummary,
@@ -101,7 +101,7 @@ interface ReportData {
   cashiers: CashierReportRow[];
   purchases: PurchaseSummary[];
   suppliers: SupplierReportRow[];
-  stock: Product[];
+  stock: StockRow[];
   movements: MovementRow[];
 }
 
@@ -132,7 +132,7 @@ export function ReportsPage() {
         api.reportByCashier(range),
         api.listPurchases(range),
         api.reportBySupplier(range),
-        api.listProducts(),
+        api.listProducts().then(stockRows),
         api.reportMovements(range),
       ]);
     return {
@@ -169,13 +169,13 @@ export function ReportsPage() {
         name,
         parent_id: null,
         parent_name: null,
-        grams: 0,
+        units: 0,
         revenue: 0,
         profit: 0,
       };
       merged.set(id, {
         ...m,
-        grams: m.grams + r.grams,
+        units: m.units + r.units,
         revenue: m.revenue + r.revenue,
         profit: m.profit + r.profit,
       });
@@ -242,15 +242,14 @@ export function ReportsPage() {
   ];
 
   const productColumns: Column<ProductReportRow>[] = [
-    { header: "المنتج", cell: (r) => r.name },
+    { header: "الصنف", cell: (r) => itemName(r.name, r.variant_label) },
     { header: "التصنيف", cell: (r) => r.category_name },
     {
-      header: "الوزن المباع",
+      header: "القطع المباعة",
       numeric: true,
-      cell: (r) => formatWeight(r.grams),
-      total: formatWeight(sum(data.products, (r) => r.grams)),
+      cell: (r) => r.units,
+      total: sum(data.products, (r) => r.units),
     },
-    { header: "قطع جاهزة", numeric: true, cell: (r) => r.units || "—" },
     {
       header: "المبيعات",
       numeric: true,
@@ -282,10 +281,10 @@ export function ReportsPage() {
       cell: (r) => (r.parent_name ? `${r.parent_name} / ${r.name}` : r.name),
     },
     {
-      header: "الوزن المباع",
+      header: "القطع المباعة",
       numeric: true,
-      cell: (r) => formatWeight(r.grams),
-      total: formatWeight(sum(categoryRows, (r) => r.grams)),
+      cell: (r) => r.units,
+      total: sum(categoryRows, (r) => r.units),
     },
     {
       header: "المبيعات",
@@ -341,7 +340,7 @@ export function ReportsPage() {
     },
   ];
 
-  const stockValueTotal = sum(data.stock, stockValue);
+  const stockValueTotal = sum(data.stock, (r) => stockValue(r.variant));
   const stockCols = stockColumns(currency).map((c, i, all) =>
     i === all.length - 1 ? { ...c, total: formatAmount(stockValueTotal) } : c,
   );
@@ -351,18 +350,18 @@ export function ReportsPage() {
       header: "التاريخ",
       cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span>,
     },
-    { header: "المنتج", cell: (r) => r.product_name },
-    { header: "النوع", cell: (r) => movementLabels[r.reason] },
+    { header: "الصنف", cell: (r) => itemName(r.product_name, r.variant_label) },
+    { header: "الحركة", cell: (r) => movementLabels[r.reason] },
     {
       header: "الكمية",
       numeric: true,
       cell: (r) => (
         <span
           dir="ltr"
-          className={r.change_grams < 0 ? "text-gill print:text-black" : "text-kelp print:text-black"}
+          className={r.change_qty < 0 ? "text-alert print:text-black" : "text-ok print:text-black"}
         >
-          {r.change_grams > 0 ? "+" : "−"}
-          {formatWeight(Math.abs(r.change_grams))}
+          {r.change_qty > 0 ? "+" : "−"}
+          {Math.abs(r.change_qty)}
         </span>
       ),
     },
@@ -392,7 +391,7 @@ export function ReportsPage() {
       label: "متوسط الفاتورة",
       value: formatMoney(s.sales_count ? Math.round(s.revenue / s.sales_count) : 0, currency),
     },
-    { label: "الوزن المباع", value: formatWeight(s.grams_sold) },
+    { label: "القطع المباعة", value: formatPieces(s.units_sold) },
     { label: "التكلفة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
     { label: "مشتريات الفترة", value: formatMoney(s.purchases_cost, currency) },
@@ -492,7 +491,7 @@ export function ReportsPage() {
         title="التقارير"
         actions={
           <>
-            <span className="text-sm text-mist">التقرير الشامل:</span>
+            <span className="text-sm text-dim">التقرير الشامل:</span>
             <ExportButtons fileName={`تقرير-شامل-${fileRange}`} document={fullDocument} />
           </>
         }
@@ -526,7 +525,7 @@ export function ReportsPage() {
               onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
               aria-label="من"
             />
-            <span className="text-mist">إلى</span>
+            <span className="text-dim">إلى</span>
             <Input
               type="date"
               className="w-40"
@@ -543,7 +542,7 @@ export function ReportsPage() {
       <Panel className="mb-6 grid grid-cols-[1.4fr_1.4fr_repeat(4,1fr)] divide-x divide-x-reverse divide-line">
         {figures.slice(0, 6).map((f, i) => (
           <div key={f.label} className="px-5 py-4">
-            <div className="text-sm text-mist">{f.label}</div>
+            <div className="text-sm text-dim">{f.label}</div>
             <div className={cx("mt-1 font-semibold", i < 2 ? "text-2xl" : "text-lg")}>{f.value}</div>
           </div>
         ))}
@@ -561,7 +560,7 @@ export function ReportsPage() {
               onClick={() => setTab(t.value)}
               className={cx(
                 "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
-                tab === t.value ? "border-ink text-ink" : "border-transparent text-mist hover:text-ink",
+                tab === t.value ? "border-ink text-ink" : "border-transparent text-dim hover:text-ink",
               )}
             >
               {t.label}
@@ -607,7 +606,7 @@ export function ReportsPage() {
       {tab === "products" && (
         <TabTable empty="لم يُبع أي منتج في هذه الفترة">
           {data.products.length > 0 && (
-            <DataTable columns={productColumns} rows={data.products} rowKey={(r) => r.product_id} />
+            <DataTable columns={productColumns} rows={data.products} rowKey={(r) => r.variant_id} />
           )}
         </TabTable>
       )}
@@ -644,7 +643,7 @@ export function ReportsPage() {
       )}
       {tab === "suppliers" && (
         <>
-          <p className="mb-3 text-sm text-mist">
+          <p className="mb-3 text-sm text-dim">
             المشتريات والمدفوع خلال الفترة المختارة، و«المستحق حالياً» هو رصيد كل مورد اليوم.
           </p>
           <TabTable empty="لا توجد مشتريات أو مستحقات للموردين">
@@ -656,10 +655,10 @@ export function ReportsPage() {
       )}
       {tab === "stock" && (
         <>
-          <p className="mb-3 text-sm text-mist">المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.</p>
+          <p className="mb-3 text-sm text-dim">المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.</p>
           <TabTable empty="لا توجد منتجات">
             {data.stock.length > 0 && (
-              <DataTable columns={stockCols} rows={data.stock} rowKey={(p) => p.id} />
+              <DataTable columns={stockCols} rows={data.stock} rowKey={(r) => r.variant.id} />
             )}
           </TabTable>
         </>
@@ -735,7 +734,7 @@ function DailyChart({
             dataKey="day"
             reversed
             tickFormatter={(d: string) => d.slice(8) + "/" + d.slice(5, 7)}
-            tick={{ fill: "var(--color-mist)", fontSize: 12 }}
+            tick={{ fill: "var(--color-dim)", fontSize: 12 }}
             axisLine={{ stroke: "var(--color-line)" }}
             tickLine={false}
             minTickGap={16}
@@ -743,7 +742,7 @@ function DailyChart({
           <YAxis
             orientation="right"
             tickFormatter={(v: number) => (v / 100).toLocaleString("en-US")}
-            tick={{ fill: "var(--color-mist)", fontSize: 12 }}
+            tick={{ fill: "var(--color-dim)", fontSize: 12 }}
             axisLine={false}
             tickLine={false}
             width={64}
@@ -763,7 +762,7 @@ function DailyChart({
               );
             }}
           />
-          <Bar dataKey="revenue" fill="var(--color-sea)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+          <Bar dataKey="revenue" fill="var(--color-chart)" radius={[4, 4, 0, 0]} maxBarSize={36} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    fish_pos_lib::run()
+    mobile_pos_lib::run()
 }

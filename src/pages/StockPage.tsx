@@ -1,20 +1,22 @@
-import { PackagePlus, Scale, Search } from "lucide-react";
+import { ClipboardCheck, PackagePlus, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type Column } from "../components/DataTable";
 import { ExportButtons } from "../components/ExportButtons";
 import { ReportDocument } from "../components/ReportDocument";
 import { section } from "../lib/document";
-import { isLowStock as isLow, stockColumns, stockValue } from "../lib/stock";
+import { isLowStock as isLow, stockColumns, stockRows, stockValue, type StockRow } from "../lib/stock";
 import { useResource } from "../lib/useResource";
 import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Panel, Segmented } from "../components/ui";
 import { api } from "../lib/api";
-import { formatAmount, formatMoney, formatWeight, gramsToKg, isoDate, parseKg } from "../lib/format";
+import { formatAmount, formatMoney, formatPieces, isoDate, itemName, parseCount } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import { PurchaseFormModal } from "./PurchasesPage";
-import type { Product } from "../lib/types";
 
 type Filter = "all" | "low" | "out";
+
+const rowKey = (r: StockRow) => r.variant.id;
+const rowName = (r: StockRow) => itemName(r.product.name, r.variant.label);
 
 export function StockPage() {
   const { settings } = useSession();
@@ -22,41 +24,41 @@ export function StockPage() {
   const [query, setQuery] = useState("");
   const [action, setAction] = useState<{
     kind: "purchase" | "adjust";
-    product: Product;
+    row: StockRow;
   } | null>(null);
 
   const [data, load] = useResource(useCallback(() => api.listProducts(), []));
-  const products = useMemo(() => data ?? [], [data]);
+  const rows = useMemo(() => stockRows(data ?? []), [data]);
 
   const counts = {
-    low: products.filter(isLow).length,
-    out: products.filter((p) => p.stock_grams <= 0).length,
+    low: rows.filter((r) => isLow(r.variant)).length,
+    out: rows.filter((r) => r.variant.stock <= 0).length,
   };
   const visible = useMemo(
     () =>
-      products.filter(
-        (p) =>
-          (filter === "all" || (filter === "low" ? isLow(p) : p.stock_grams <= 0)) &&
-          (!query.trim() || p.name.includes(query.trim())),
+      rows.filter(
+        (r) =>
+          (filter === "all" || (filter === "low" ? isLow(r.variant) : r.variant.stock <= 0)) &&
+          (!query.trim() || rowName(r).includes(query.trim())),
       ),
-    [products, filter, query],
+    [rows, filter, query],
   );
-  const totalValue = visible.reduce((s, p) => s + stockValue(p), 0);
+  const totalValue = visible.reduce((s, r) => s + stockValue(r.variant), 0);
 
-  const columns: Column<Product>[] = [
+  const columns: Column<StockRow>[] = [
     ...stockColumns(settings.currency).map((c) =>
       c.header === "المتوفر"
         ? {
             ...c,
-            cell: (p: Product) => (
+            cell: ({ variant: v }: StockRow) => (
               <span className="inline-flex items-center gap-2">
-                {p.stock_grams <= 0 ? (
+                {v.stock <= 0 ? (
                   <Badge tone="danger">نفد</Badge>
                 ) : (
-                  isLow(p) && <Badge tone="danger">منخفض</Badge>
+                  isLow(v) && <Badge tone="danger">منخفض</Badge>
                 )}
-                <span className={p.stock_grams <= 0 || isLow(p) ? "font-medium text-gill" : "font-medium"}>
-                  {formatWeight(p.stock_grams)}
+                <span className={v.stock <= 0 || isLow(v) ? "font-medium text-alert" : "font-medium"}>
+                  {formatPieces(v.stock)}
                 </span>
               </span>
             ),
@@ -65,14 +67,14 @@ export function StockPage() {
     ),
     {
       header: "",
-      cell: (p) => (
+      cell: (r) => (
         <div className="flex justify-end gap-2">
-          <Button tone="outline" size="sm" onClick={() => setAction({ kind: "purchase", product: p })}>
+          <Button tone="outline" size="sm" onClick={() => setAction({ kind: "purchase", row: r })}>
             <PackagePlus className="size-4" />
             استلام
           </Button>
-          <Button tone="ghost" size="sm" onClick={() => setAction({ kind: "adjust", product: p })}>
-            <Scale className="size-4" />
+          <Button tone="ghost" size="sm" onClick={() => setAction({ kind: "adjust", row: r })}>
+            <ClipboardCheck className="size-4" />
             جرد
           </Button>
         </div>
@@ -83,8 +85,8 @@ export function StockPage() {
 
   const filterTitle = {
     all: "تقرير المخزون",
-    low: "منتجات قاربت على النفاد",
-    out: "منتجات نفدت",
+    low: "أصناف قاربت على النفاد",
+    out: "أصناف نفدت",
   }[filter];
 
   return (
@@ -100,9 +102,9 @@ export function StockPage() {
                 settings={settings}
                 title={filterTitle}
                 figures={[
-                  { label: "عدد المنتجات", value: visible.length },
+                  { label: "عدد الأصناف", value: visible.length },
                   {
-                    label: "قيمة المخزون بالتكلفة",
+                    label: "قيمة المخزون بسعر الشراء",
                     value: formatMoney(totalValue, settings.currency),
                   },
                   { label: "منخفض", value: counts.low },
@@ -135,7 +137,7 @@ export function StockPage() {
           />
         </div>
         <div className="relative w-72">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-mist" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-dim" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -147,22 +149,22 @@ export function StockPage() {
 
       <Panel className="overflow-hidden">
         {visible.length === 0 ? (
-          <Empty title={products.length === 0 ? "لا توجد منتجات" : "لا يوجد ما يطابق هذا الفلتر"} />
+          <Empty title={rows.length === 0 ? "لا توجد منتجات" : "لا يوجد ما يطابق هذا الفلتر"} />
         ) : (
-          <DataTable columns={columns} rows={visible} rowKey={(p) => p.id} />
+          <DataTable columns={columns} rows={visible} rowKey={rowKey} />
         )}
       </Panel>
 
       {action?.kind === "purchase" && (
         <PurchaseFormModal
-          productId={action.product.id}
+          variantId={action.row.variant.id}
           onClose={() => setAction(null)}
           onSaved={() => (setAction(null), load())}
         />
       )}
       {action?.kind === "adjust" && (
         <AdjustModal
-          product={action.product}
+          row={action.row}
           onClose={() => setAction(null)}
           onSaved={() => (setAction(null), load())}
         />
@@ -171,26 +173,20 @@ export function StockPage() {
   );
 }
 
-function AdjustModal({
-  product,
-  onClose,
-  onSaved,
-}: {
-  product: Product;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function AdjustModal({ row, onClose, onSaved }: { row: StockRow; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [kg, setKg] = useState(gramsToKg(Math.max(product.stock_grams, 0)));
+  const current = row.variant.stock;
+  const [text, setText] = useState(String(Math.max(current, 0)));
   const [note, setNote] = useState("");
-  const grams = parseKg(kg);
-  const diff = grams === null ? null : grams - product.stock_grams;
+  const counted = parseCount(text);
+  const diff = counted === null ? null : counted - current;
+  const name = rowName(row);
 
   const save = async () => {
-    if (grams === null) return toast("أدخل الكمية بشكل صحيح", "error");
+    if (counted === null) return toast("اكتب عدد القطع رقماً صحيحاً", "error");
     try {
-      await api.adjustStock(product.id, grams, note);
-      toast(`حُدّث مخزون «${product.name}»`);
+      await api.adjustStock(row.variant.id, counted, note);
+      toast(`حُدّث مخزون «${name}»`);
       onSaved();
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -199,7 +195,7 @@ function AdjustModal({
 
   return (
     <Modal
-      title={`جرد · ${product.name}`}
+      title={`جرد · ${name}`}
       onClose={onClose}
       footer={
         <>
@@ -220,18 +216,25 @@ function AdjustModal({
         }}
       >
         <p className="text-sm leading-6 text-ink-2">
-          اكتب الكمية الموجودة فعلاً بعد الوزن. يُسجَّل الفرق في حركة المخزون (هالك، تالف، أو خطأ سابق).
+          اكتب عدد القطع الموجودة فعلاً على الرف وفي المخزن. يُسجَّل الفرق في حركة المخزون (تالف، مفقود، أو
+          خطأ سابق).
         </p>
         <Field
-          label="الكمية الفعلية (كجم)"
+          label="العدد الفعلي"
           hint={
             diff !== null && diff !== 0
-              ? `${diff > 0 ? "زيادة" : "نقص"} ${formatWeight(Math.abs(diff))} عن المسجّل (${formatWeight(product.stock_grams)})`
-              : `المسجّل حالياً: ${formatWeight(product.stock_grams)}`
+              ? `${diff > 0 ? "زيادة" : "نقص"} ${formatPieces(Math.abs(diff))} عن المسجّل (${formatPieces(current)})`
+              : `المسجّل حالياً: ${formatPieces(current)}`
           }
         >
           {(id) => (
-            <Input id={id} dir="ltr" inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} />
+            <Input
+              id={id}
+              dir="ltr"
+              inputMode="numeric"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
           )}
         </Field>
         <Field label="السبب">
@@ -240,7 +243,7 @@ function AdjustModal({
               id={id}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="مثال: هالك تنظيف"
+              placeholder="مثال: شاشة مكسورة"
             />
           )}
         </Field>

@@ -13,26 +13,24 @@ const sampleSale: Sale = {
   id: 1024,
   created_at: "2026-01-01 12:30:00",
   cashier_name: "الكاشير",
-  total: 26500,
+  total: 3245000,
   payment_method: "cash",
-  paid: 30000,
-  change_due: 3500,
+  paid: 3250000,
+  change_due: 5000,
   items: [
     {
-      product_name: "بلطي",
-      variant_label: null,
+      product_name: "Samsung Galaxy A55",
+      variant_label: "256GB أزرق",
       quantity: 1,
-      weight_grams: 1500,
-      unit_price: 9000,
-      line_total: 13500,
+      unit_price: 3150000,
+      line_total: 3150000,
     },
     {
-      product_name: "جمبري",
-      variant_label: "نصف كيلو",
-      quantity: 1,
-      weight_grams: 500,
-      unit_price: 13000,
-      line_total: 13000,
+      product_name: "جراب سيليكون",
+      variant_label: null,
+      quantity: 2,
+      unit_price: 47500,
+      line_total: 95000,
     },
   ],
 };
@@ -50,7 +48,7 @@ function Section({
     <Panel className="grid grid-cols-[260px_1fr] gap-8 p-6">
       <div>
         <h2 className="font-semibold">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-mist">{description}</p>
+        <p className="mt-1 text-sm leading-6 text-dim">{description}</p>
       </div>
       <div>{children}</div>
     </Panel>

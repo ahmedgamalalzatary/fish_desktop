@@ -15,11 +15,12 @@ import {
   Toggle,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { formatAmount, formatWeight, gramsToKg, parseKg, parseMoney } from "../lib/format";
+import { formatAmount, formatPieces, parseCount, parseMoney } from "../lib/format";
+import { isLowStock, productStock } from "../lib/stock";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import { useResource } from "../lib/useResource";
-import type { Category, Product, ProductInput } from "../lib/types";
+import type { Category, Product, ProductInput, Variant } from "../lib/types";
 
 export function ProductsPage() {
   const toast = useToast();
@@ -81,30 +82,35 @@ export function ProductsPage() {
       ),
     },
     {
-      header: "طريقة البيع",
-      cell: (p) => (
-        <div className="flex flex-wrap gap-1">
-          {p.sell_by_weight && <Badge>بالكيلو</Badge>}
-          {p.variants.length > 0 && <Badge>{p.variants.length} أوزان جاهزة</Badge>}
-        </div>
-      ),
+      header: "الأنواع",
+      cell: (p) =>
+        p.variants.length === 1 && !p.variants[0].label ? (
+          <span className="text-dim">—</span>
+        ) : (
+          <div className="flex max-w-80 flex-wrap gap-1">
+            {p.variants.slice(0, 4).map((v) => (
+              <Badge key={v.id}>{v.label}</Badge>
+            ))}
+            {p.variants.length > 4 && <Badge tone="ink">+{p.variants.length - 4}</Badge>}
+          </div>
+        ),
     },
     {
-      header: "سعر الكيلو",
+      header: "سعر البيع",
       numeric: true,
-      cell: (p) => (p.sell_by_weight ? formatAmount(p.price_per_kg) : "—"),
+      cell: (p) => priceRange(p.variants, (v) => v.price),
     },
     {
-      header: "تكلفة الكيلو",
+      header: "سعر الشراء",
       numeric: true,
-      cell: (p) => <span className="text-mist">{formatAmount(p.cost_per_kg)}</span>,
+      cell: (p) => <span className="text-dim">{priceRange(p.variants, (v) => v.cost)}</span>,
     },
     {
       header: "المخزون",
       numeric: true,
       cell: (p) => {
-        const low = p.stock_grams <= p.low_stock_grams;
-        return <span className={low ? "font-medium text-gill" : ""}>{formatWeight(p.stock_grams)}</span>;
+        const low = p.variants.some((v) => v.stock <= 0 || isLowStock(v));
+        return <span className={low ? "font-medium text-alert" : ""}>{formatPieces(productStock(p))}</span>;
       },
     },
     {
@@ -145,7 +151,7 @@ export function ProductsPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative w-72">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-mist" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-dim" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -168,7 +174,7 @@ export function ProductsPage() {
       <Panel className="overflow-hidden">
         {categories.length === 0 ? (
           <Empty title="أضف تصنيفاً أولاً">
-            كل منتج يتبع تصنيفاً، مثل «أسماك» أو «جمبري». أنشئ التصنيفات من صفحة التصنيفات.
+            كل منتج يتبع تصنيفاً، مثل «موبايلات» أو «إكسسوارات». أنشئ التصنيفات من صفحة التصنيفات.
           </Empty>
         ) : visible.length === 0 ? (
           <Empty title={showArchived ? "الأرشيف فارغ" : "لا توجد منتجات"}>
@@ -203,15 +209,25 @@ export function ProductsPage() {
   );
 }
 
+/** "1,200.00" for one price, "1,200.00 – 1,850.00" across options. */
+function priceRange(variants: Variant[], pick: (v: Variant) => number) {
+  if (!variants.length) return "—";
+  const values = variants.map(pick);
+  const [min, max] = [Math.min(...values), Math.max(...values)];
+  return min === max ? formatAmount(min) : `${formatAmount(min)} – ${formatAmount(max)}`;
+}
+
 interface VariantDraft {
   id: number | null;
   label: string;
-  kg: string;
   price: string;
   cost: string;
+  lowStock: string;
+  openingStock: string;
 }
 
 const money = (cents: number) => (cents ? String(cents / 100) : "");
+const emptyDraft: VariantDraft = { id: null, label: "", price: "", cost: "", lowStock: "", openingStock: "" };
 
 function ProductForm({
   product,
@@ -228,54 +244,48 @@ function ProductForm({
   const toast = useToast();
   const [name, setName] = useState(product?.name ?? "");
   const [categoryId, setCategoryId] = useState<number | null>(product?.category_id ?? null);
-  const [sellByWeight, setSellByWeight] = useState(product?.sell_by_weight ?? true);
-  const [pricePerKg, setPricePerKg] = useState(money(product?.price_per_kg ?? 0));
-  const [costPerKg, setCostPerKg] = useState(money(product?.cost_per_kg ?? 0));
-  const [lowStock, setLowStock] = useState(
-    product ? gramsToKg(product.low_stock_grams).replace(/\.?0+$/, "") : "",
-  );
-  const [openingStock, setOpeningStock] = useState("");
-  const [variants, setVariants] = useState<VariantDraft[]>(
+  const [drafts, setDrafts] = useState<VariantDraft[]>(
     product?.variants.map((v) => ({
       id: v.id,
       label: v.label,
-      kg: gramsToKg(v.weight_grams).replace(/\.?0+$/, ""),
       price: money(v.price),
       cost: money(v.cost),
-    })) ?? [],
+      lowStock: v.low_stock ? String(v.low_stock) : "",
+      openingStock: "",
+    })) ?? [emptyDraft],
   );
+  const [hasOptions, setHasOptions] = useState(drafts.length > 1 || drafts[0].label !== "");
   const [busy, setBusy] = useState(false);
 
-  const updateVariant = (i: number, patch: Partial<VariantDraft>) =>
-    setVariants((vs) => vs.map((v, j) => (i === j ? { ...v, ...patch } : v)));
+  const updateDraft = (i: number, patch: Partial<VariantDraft>) =>
+    setDrafts((ds) => ds.map((d, j) => (i === j ? { ...d, ...patch } : d)));
+
+  const toggleOptions = (on: boolean) => {
+    if (!on && drafts.length > 1) return toast("احذف الأنواع الزائدة أولاً واترك نوعاً واحداً", "error");
+    setHasOptions(on);
+  };
 
   const save = async () => {
     if (categoryId === null) return toast("اختر التصنيف", "error");
-    const parsedVariants = variants.map((v) => ({
-      id: v.id,
-      label: v.label,
-      weight_grams: parseKg(v.kg) ?? 0,
-      price: parseMoney(v.price) ?? 0,
-      cost: parseMoney(v.cost || "0") ?? 0,
+    const variants = drafts.map((d) => ({
+      id: d.id,
+      label: hasOptions ? d.label : "",
+      price: parseMoney(d.price) ?? 0,
+      cost: parseMoney(d.cost || "0") ?? -1,
+      low_stock: parseCount(d.lowStock || "0") ?? -1,
+      opening_stock: parseCount(d.openingStock || "0") ?? -1,
     }));
-    const input: ProductInput = {
-      name,
-      category_id: categoryId,
-      sell_by_weight: sellByWeight,
-      price_per_kg: parseMoney(pricePerKg || "0") ?? -1,
-      cost_per_kg: parseMoney(costPerKg || "0") ?? -1,
-      low_stock_grams: parseKg(lowStock || "0") ?? -1,
-      variants: parsedVariants,
-    };
-    const opening = parseKg(openingStock || "0");
-    if (opening === null) return toast("المخزون الافتتاحي غير صحيح", "error");
+    if (variants.some((v) => v.cost < 0 || v.low_stock < 0 || v.opening_stock < 0)) {
+      return toast("اكتب الأسعار والكميات أرقاماً صحيحة، والكميات بدون كسور", "error");
+    }
+    const input: ProductInput = { name, category_id: categoryId, variants };
 
     setBusy(true);
     try {
       if (product) {
         await api.updateProduct(product.id, input);
       } else {
-        await api.createProduct(input, opening);
+        await api.createProduct(input);
       }
       toast(product ? "حُفظت التعديلات" : "أُضيف المنتج");
       onSaved();
@@ -285,11 +295,22 @@ function ProductForm({
     }
   };
 
+  const numberInput = (i: number, key: keyof Omit<VariantDraft, "id">, label: string, id?: string) => (
+    <Input
+      id={id}
+      dir="ltr"
+      inputMode="decimal"
+      value={drafts[i][key]}
+      onChange={(e) => updateDraft(i, { [key]: e.target.value })}
+      aria-label={id ? undefined : label}
+    />
+  );
+
   return (
     <Modal
       title={product ? `تعديل «${product.name}»` : "منتج جديد"}
       onClose={onClose}
-      width="max-w-3xl"
+      width="max-w-4xl"
       footer={
         <>
           <Button tone="outline" onClick={onClose}>
@@ -315,7 +336,7 @@ function ProductForm({
                 id={id}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="مثال: بلطي"
+                placeholder="مثال: Samsung Galaxy A55"
               />
             )}
           </Field>
@@ -334,137 +355,84 @@ function ProductForm({
 
         <fieldset className="rounded-xl border border-line bg-white p-4">
           <Toggle
-            checked={sellByWeight}
-            onChange={setSellByWeight}
-            label="البيع بالكيلو"
-            description="يكتب الكاشير الوزن، ويُحسب السعر تلقائياً."
+            checked={hasOptions}
+            onChange={toggleOptions}
+            label="له أنواع (سعة أو لون)"
+            description="مثل 128GB أسود و256GB أزرق. لكل نوع سعره ومخزونه، ويختار الكاشير النوع عند البيع."
           />
-          <div className="mt-4 grid grid-cols-3 gap-4">
-            <Field label={`سعر بيع الكيلو (${settings.currency})`}>
-              {(id) => (
-                <Input
-                  id={id}
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={pricePerKg}
-                  onChange={(e) => setPricePerKg(e.target.value)}
-                  disabled={!sellByWeight}
-                />
-              )}
-            </Field>
-            <Field label={`تكلفة الكيلو (${settings.currency})`} hint="تُستخدم لحساب الربح.">
-              {(id) => (
-                <Input
-                  id={id}
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={costPerKg}
-                  onChange={(e) => setCostPerKg(e.target.value)}
-                />
-              )}
-            </Field>
-            <Field label="تنبيه نقص المخزون (كجم)" hint="يظهر التنبيه عند الوصول لهذه الكمية.">
-              {(id) => (
-                <Input
-                  id={id}
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={lowStock}
-                  onChange={(e) => setLowStock(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-        </fieldset>
 
-        <fieldset className="rounded-xl border border-line bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium">أوزان جاهزة</div>
-              <div className="text-xs text-mist">
-                مثل: ربع كيلو، نصف كيلو، علبة 1 كيلو. لكل وزن سعره الخاص، ويُخصم وزنه من المخزون.
-              </div>
+          {!hasOptions ? (
+            <div className="mt-4 grid grid-cols-4 gap-4">
+              <Field label={`سعر البيع (${settings.currency})`}>
+                {(id) => numberInput(0, "price", "سعر البيع", id)}
+              </Field>
+              <Field label={`سعر الشراء (${settings.currency})`} hint="يُستخدم لحساب الربح.">
+                {(id) => numberInput(0, "cost", "سعر الشراء", id)}
+              </Field>
+              <Field label="تنبيه نقص المخزون" hint="عدد القطع الذي يظهر عنده التنبيه.">
+                {(id) => numberInput(0, "lowStock", "تنبيه نقص المخزون", id)}
+              </Field>
+              {drafts[0].id === null && (
+                <Field label="المخزون الافتتاحي" hint="عدد القطع الموجودة الآن.">
+                  {(id) => numberInput(0, "openingStock", "المخزون الافتتاحي", id)}
+                </Field>
+              )}
             </div>
-            <Button
-              tone="outline"
-              size="sm"
-              onClick={() =>
-                setVariants((vs) => [...vs, { id: null, label: "", kg: "", price: "", cost: "" }])
-              }
-            >
-              <Plus className="size-4" />
-              إضافة وزن
-            </Button>
-          </div>
-          {variants.length > 0 && (
+          ) : (
             <div className="mt-4 flex flex-col gap-2">
-              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 text-xs text-mist">
-                <span>الاسم</span>
-                <span>الوزن (كجم)</span>
+              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-2 text-xs text-dim">
+                <span>النوع</span>
                 <span>سعر البيع</span>
-                <span>التكلفة</span>
+                <span>سعر الشراء</span>
+                <span>تنبيه عند</span>
+                <span>المخزون</span>
                 <span className="w-9" />
               </div>
-              {variants.map((v, i) => (
-                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2">
+              {drafts.map((d, i) => (
+                <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-2">
                   <Input
-                    value={v.label}
-                    onChange={(e) => updateVariant(i, { label: e.target.value })}
-                    placeholder="نصف كيلو"
-                    aria-label="اسم الوزن"
+                    value={d.label}
+                    onChange={(e) => updateDraft(i, { label: e.target.value })}
+                    placeholder="128GB أسود"
+                    aria-label="اسم النوع"
                   />
-                  <Input
-                    dir="ltr"
-                    inputMode="decimal"
-                    value={v.kg}
-                    onChange={(e) => updateVariant(i, { kg: e.target.value })}
-                    placeholder="0.5"
-                    aria-label="الوزن بالكيلو"
-                  />
-                  <Input
-                    dir="ltr"
-                    inputMode="decimal"
-                    value={v.price}
-                    onChange={(e) => updateVariant(i, { price: e.target.value })}
-                    aria-label="سعر البيع"
-                  />
-                  <Input
-                    dir="ltr"
-                    inputMode="decimal"
-                    value={v.cost}
-                    onChange={(e) => updateVariant(i, { cost: e.target.value })}
-                    aria-label="التكلفة"
-                  />
+                  {numberInput(i, "price", "سعر البيع")}
+                  {numberInput(i, "cost", "سعر الشراء")}
+                  {numberInput(i, "lowStock", "تنبيه نقص المخزون")}
+                  {d.id === null ? (
+                    numberInput(i, "openingStock", "المخزون الافتتاحي")
+                  ) : (
+                    <span className="flex items-center px-3 text-sm text-dim">
+                      {formatPieces(product?.variants.find((v) => v.id === d.id)?.stock ?? 0)}
+                    </span>
+                  )}
                   <Button
                     tone="danger-ghost"
                     size="icon"
-                    onClick={() => setVariants((vs) => vs.filter((_, j) => j !== i))}
-                    aria-label="حذف الوزن"
+                    disabled={drafts.length === 1}
+                    onClick={() => setDrafts((ds) => ds.filter((_, j) => j !== i))}
+                    aria-label="حذف النوع"
                   >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
               ))}
+              <Button
+                tone="outline"
+                size="sm"
+                className="self-start"
+                onClick={() => setDrafts((ds) => [...ds, emptyDraft])}
+              >
+                <Plus className="size-4" />
+                إضافة نوع
+              </Button>
             </div>
           )}
         </fieldset>
-
-        {!product && (
-          <Field
-            label="المخزون الافتتاحي (كجم)"
-            hint="الكمية الموجودة الآن. يمكنك إضافة الكميات الجديدة لاحقاً من صفحة المخزون."
-            className="w-64"
-          >
-            {(id) => (
-              <Input
-                id={id}
-                dir="ltr"
-                inputMode="decimal"
-                value={openingStock}
-                onChange={(e) => setOpeningStock(e.target.value)}
-              />
-            )}
-          </Field>
+        {product && (
+          <p className="-mt-3 text-xs text-dim">
+            الكميات تتغير بفاتورة شراء من صفحة المشتريات، أو بالجرد من صفحة المخزون.
+          </p>
         )}
         <button type="submit" hidden />
       </form>

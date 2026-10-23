@@ -1,5 +1,5 @@
 import type { Column } from "../components/DataTable";
-import { formatAmount, formatDateTime, formatWeight } from "./format";
+import { formatAmount, formatDateTime } from "./format";
 import type { PurchaseSummary, SupplierReportRow } from "./types";
 
 const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((s, r) => s + f(r), 0);
@@ -13,10 +13,10 @@ export function purchaseColumns(rows: PurchaseSummary[]): Column<PurchaseSummary
     { header: "فاتورة المورد", cell: (r) => r.invoice_no || "—" },
     { header: "الأصناف", numeric: true, cell: (r) => r.items_count },
     {
-      header: "الوزن",
+      header: "القطع",
       numeric: true,
-      cell: (r) => formatWeight(r.grams),
-      total: formatWeight(sum(rows, (r) => r.grams)),
+      cell: (r) => r.pieces,
+      total: sum(rows, (r) => r.pieces),
     },
     {
       header: "الإجمالي",
@@ -39,10 +39,10 @@ export function supplierReportColumns(rows: SupplierReportRow[]): Column<Supplie
     { header: "المورد", cell: (r) => r.name },
     { header: "الفواتير", numeric: true, cell: (r) => r.purchases_count },
     {
-      header: "الوزن المستلم",
+      header: "القطع المستلمة",
       numeric: true,
-      cell: (r) => formatWeight(r.grams),
-      total: formatWeight(sum(rows, (r) => r.grams)),
+      cell: (r) => r.pieces,
+      total: sum(rows, (r) => r.pieces),
     },
     {
       header: "المشتريات",

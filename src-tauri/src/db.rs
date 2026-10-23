@@ -22,31 +22,28 @@ CREATE TABLE categories (
     created_at TEXT NOT NULL
 );
 
--- Prices are integer cents, weights are integer grams.
--- Stock is tracked per product in grams; fixed-weight variants draw from the same stock.
+-- Prices are integer cents, quantities are whole pieces.
+-- Every product has at least one variant, and stock lives on the variant. A product sold without
+-- options (a charger, a cover) has a single variant with an empty label.
 CREATE TABLE products (
-    id               INTEGER PRIMARY KEY,
-    name             TEXT NOT NULL,
-    category_id      INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-    sell_by_weight   INTEGER NOT NULL DEFAULT 1,
-    price_per_kg     INTEGER NOT NULL DEFAULT 0,
-    cost_per_kg      INTEGER NOT NULL DEFAULT 0,
-    stock_grams      INTEGER NOT NULL DEFAULT 0,
-    low_stock_grams  INTEGER NOT NULL DEFAULT 0,
-    active           INTEGER NOT NULL DEFAULT 1,
-    created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
 );
 
 CREATE TABLE product_variants (
-    id           INTEGER PRIMARY KEY,
-    product_id   INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    label        TEXT NOT NULL,
-    weight_grams INTEGER NOT NULL,
-    price        INTEGER NOT NULL,
-    cost         INTEGER NOT NULL,
-    active       INTEGER NOT NULL DEFAULT 1,
-    sort         INTEGER NOT NULL DEFAULT 0
+    id         INTEGER PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    label      TEXT NOT NULL DEFAULT '',
+    price      INTEGER NOT NULL,
+    cost       INTEGER NOT NULL DEFAULT 0,
+    stock      INTEGER NOT NULL DEFAULT 0,
+    low_stock  INTEGER NOT NULL DEFAULT 0,
+    active     INTEGER NOT NULL DEFAULT 1,
+    sort       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE sales (
@@ -65,26 +62,26 @@ CREATE TABLE sale_items (
     id            INTEGER PRIMARY KEY,
     sale_id       INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
     product_id    INTEGER NOT NULL REFERENCES products(id),
-    variant_id    INTEGER,
+    variant_id    INTEGER NOT NULL REFERENCES product_variants(id),
     product_name  TEXT NOT NULL,
     variant_label TEXT,
     quantity      INTEGER NOT NULL,
-    weight_grams  INTEGER NOT NULL,
     unit_price    INTEGER NOT NULL,
     line_total    INTEGER NOT NULL,
     line_cost     INTEGER NOT NULL
 );
 
 CREATE TABLE stock_movements (
-    id           INTEGER PRIMARY KEY,
-    product_id   INTEGER NOT NULL REFERENCES products(id),
-    change_grams INTEGER NOT NULL,
-    reason       TEXT NOT NULL CHECK (reason IN ('sale', 'purchase', 'adjustment')),
-    cost_total   INTEGER,
-    note         TEXT,
-    sale_id      INTEGER REFERENCES sales(id),
-    user_id      INTEGER NOT NULL REFERENCES users(id),
-    created_at   TEXT NOT NULL
+    id         INTEGER PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
+    change_qty INTEGER NOT NULL,
+    reason     TEXT NOT NULL CHECK (reason IN ('sale', 'purchase', 'adjustment')),
+    cost_total INTEGER,
+    note       TEXT,
+    sale_id    INTEGER REFERENCES sales(id),
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE settings (
@@ -93,7 +90,7 @@ CREATE TABLE settings (
 );
 
 INSERT INTO settings (key, value) VALUES
-    ('shop_name', 'محل الأسماك'),
+    ('shop_name', 'محل الموبايلات'),
     ('shop_phone', ''),
     ('shop_address', ''),
     ('receipt_footer', 'شكراً لزيارتكم'),
@@ -105,6 +102,7 @@ CREATE INDEX idx_sale_items_sale ON sale_items(sale_id);
 CREATE INDEX idx_sale_items_product ON sale_items(product_id);
 CREATE INDEX idx_movements_created ON stock_movements(created_at);
 CREATE INDEX idx_products_category ON products(category_id);
+CREATE INDEX idx_variants_product ON product_variants(product_id);
 "#,
     r#"
 -- `opening_balance` is what the shop already owed the supplier when they were added.
@@ -178,7 +176,7 @@ mod tests {
 
     #[test]
     fn migrates_a_fresh_database_and_is_idempotent() {
-        let path = std::env::temp_dir().join(format!("fish-pos-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("mobile-pos-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         drop(open(&path).unwrap());
         let conn = open(&path).unwrap();

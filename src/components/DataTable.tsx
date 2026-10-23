@@ -31,7 +31,7 @@ export function DataTable<T>({
             <th
               key={c.header}
               className={cx(
-                "sticky top-0 border-b border-line bg-white px-4 py-2.5 font-medium text-mist",
+                "sticky top-0 border-b border-line bg-white px-4 py-2.5 font-medium text-dim",
                 c.numeric ? "text-end" : "text-start",
               )}
             >
@@ -45,7 +45,7 @@ export function DataTable<T>({
           <tr
             key={rowKey(row)}
             onClick={onRowClick && (() => onRowClick(row))}
-            className={cx("hover:bg-frost", onRowClick && "cursor-pointer")}
+            className={cx("hover:bg-glass", onRowClick && "cursor-pointer")}
           >
             {columns.map((c) => (
               <td key={c.header} className={cx("border-b border-line/70 px-4 py-3", c.numeric && "text-end")}>

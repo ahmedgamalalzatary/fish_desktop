@@ -61,14 +61,13 @@ export const api = {
   deleteCategory: (id: number) => call<void>("delete_category", { id }),
 
   listProducts: (includeInactive = false) => call<Product[]>("list_products", { includeInactive }),
-  createProduct: (input: ProductInput, openingStockGrams: number) =>
-    call<number>("create_product", { input, openingStockGrams }),
+  createProduct: (input: ProductInput) => call<number>("create_product", { input }),
   updateProduct: (id: number, input: ProductInput) => call<void>("update_product", { id, input }),
   deleteProduct: (id: number) => call<"deleted" | "archived">("delete_product", { id }),
   restoreProduct: (id: number) => call<void>("restore_product", { id }),
 
-  adjustStock: (productId: number, newGrams: number, note: string) =>
-    call<void>("adjust_stock", { productId, newGrams, note }),
+  adjustStock: (variantId: number, newQty: number, note: string) =>
+    call<void>("adjust_stock", { variantId, newQty, note }),
 
   listSuppliers: () => call<Supplier[]>("list_suppliers"),
   createSupplier: (input: SupplierInput) => call<number>("create_supplier", { input }),

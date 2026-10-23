@@ -10,7 +10,7 @@ import {
   Empty,
   Field,
   Input,
-  Lcd,
+  Screen,
   Modal,
   PageHeader,
   Panel,
@@ -24,15 +24,16 @@ import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatWeight,
   isoDate,
-  parseKg,
+  itemName,
+  parseCount,
   parseMoney,
 } from "../lib/format";
 import { purchaseColumns } from "../lib/purchases";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
-import type { Product, Purchase, StatementRow, Supplier } from "../lib/types";
+import { stockRows, type StockRow } from "../lib/stock";
+import type { Purchase, StatementRow, Supplier } from "../lib/types";
 import { useResource } from "../lib/useResource";
 
 type Tab = "invoices" | "suppliers";
@@ -139,7 +140,7 @@ function InvoicesTab({ version, onChanged }: { version: number; onChanged: () =>
           onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
           aria-label="من"
         />
-        <span className="text-mist">إلى</span>
+        <span className="text-dim">إلى</span>
         <Input
           type="date"
           className="w-40"
@@ -251,7 +252,7 @@ function SuppliersTab({
             </span>
           )}
           {s.phone && (
-            <div dir="ltr" className="text-end text-xs text-mist">
+            <div dir="ltr" className="text-end text-xs text-dim">
               {s.phone}
             </div>
           )}
@@ -273,7 +274,7 @@ function SuppliersTab({
     {
       header: "آخر فاتورة",
       cell: (s) => (
-        <span className="text-mist">
+        <span className="text-dim">
           {s.last_purchase ? formatDateTime(s.last_purchase).split(" ")[0] : "—"}
         </span>
       ),
@@ -339,9 +340,9 @@ function SuppliersTab({
 
 /** Money the shop owes in red; a supplier in credit (overpaid) in green. */
 function Balance({ amount }: { amount: number }) {
-  if (amount === 0) return <span className="text-mist">0.00</span>;
+  if (amount === 0) return <span className="text-dim">0.00</span>;
   return (
-    <span className={amount > 0 ? "font-semibold text-gill" : "font-semibold text-kelp"}>
+    <span className={amount > 0 ? "font-semibold text-alert" : "font-semibold text-ok"}>
       {formatAmount(Math.abs(amount))}
       {amount < 0 && <span className="ms-1 text-xs font-normal">له رصيد</span>}
     </span>
@@ -352,26 +353,28 @@ function Balance({ amount }: { amount: number }) {
 
 interface Line {
   key: number;
-  productId: string;
-  kg: string;
-  cost: string;
+  variantId: string;
+  qty: string;
+  unitCost: string;
 }
 
 let lineKey = 0;
-const newLine = (productId = ""): Line => ({
+const newLine = (variantId = ""): Line => ({
   key: ++lineKey,
-  productId,
-  kg: "",
-  cost: "",
+  variantId,
+  qty: "1",
+  unitCost: "",
 });
 
-/** Records goods received from a supplier. `productId` pre-fills the first line (from the stock page). */
+const costText = (cents: number) => (cents ? String(cents / 100) : "");
+
+/** Records goods received from a supplier. `variantId` pre-fills the first line (from the stock page). */
 export function PurchaseFormModal({
-  productId,
+  variantId,
   onClose,
   onSaved,
 }: {
-  productId?: number;
+  variantId?: number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -384,30 +387,35 @@ export function PurchaseFormModal({
   const [newSupplier, setNewSupplier] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [note, setNote] = useState("");
-  const [lines, setLines] = useState<Line[]>(() => [newLine(productId ? String(productId) : "")]);
+  const [lines, setLines] = useState<Line[]>(() => [newLine(variantId ? String(variantId) : "")]);
   const [payInFull, setPayInFull] = useState(true);
   const [paidText, setPaidText] = useState("");
   const [updateCost, setUpdateCost] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const byId = useMemo(() => new Map((products ?? []).map((p) => [String(p.id), p])), [products]);
+  const byId = useMemo(
+    () => new Map(stockRows(products ?? []).map((r) => [String(r.variant.id), r])),
+    [products],
+  );
   const groups = useMemo(() => {
-    const map = new Map<string, Product[]>();
-    for (const p of products ?? []) {
+    const map = new Map<string, StockRow[]>();
+    for (const r of stockRows(products ?? [])) {
+      const p = r.product;
       const group = p.parent_category_name
         ? `${p.parent_category_name} / ${p.category_name}`
         : p.category_name;
-      map.set(group, [...(map.get(group) ?? []), p]);
+      map.set(group, [...(map.get(group) ?? []), r]);
     }
     return [...map.entries()];
   }, [products]);
   const activeSuppliers = (suppliers ?? []).filter((s) => s.active);
 
+  // An empty buy price means the item's current one, which the field shows as its placeholder.
   const parsed = lines.map((l) => ({
-    grams: parseKg(l.kg),
-    cost: parseMoney(l.cost || "0"),
+    qty: parseCount(l.qty),
+    unitCost: l.unitCost ? parseMoney(l.unitCost) : (byId.get(l.variantId)?.variant.cost ?? 0),
   }));
-  const total = parsed.reduce((s, l) => s + (l.cost ?? 0), 0);
+  const total = parsed.reduce((s, l) => s + (l.qty ?? 0) * (l.unitCost ?? 0), 0);
   const paid = payInFull ? total : parseMoney(paidText || "0");
   const remaining = paid === null ? null : total - paid;
   const supplier = activeSuppliers.find((s) => String(s.id) === supplierId);
@@ -417,12 +425,10 @@ export function PurchaseFormModal({
 
   const save = async () => {
     if (!supplierId || (supplierId === "new" && !newSupplier.trim())) return toast("اختر المورد", "error");
-    const filled = lines
-      .map((l, i) => ({ l, ...parsed[i] }))
-      .filter(({ l }) => l.productId || l.kg || l.cost);
+    const filled = lines.map((l, i) => ({ l, ...parsed[i] })).filter(({ l }) => l.variantId || l.unitCost);
     if (filled.length === 0) return toast("أضف صنفاً واحداً على الأقل", "error");
-    if (filled.some(({ l, grams, cost }) => !l.productId || !grams || cost === null))
-      return toast("أكمل المنتج والوزن والتكلفة لكل صنف", "error");
+    if (filled.some(({ l, qty, unitCost }) => !l.variantId || !qty || unitCost === null))
+      return toast("أكمل الصنف والعدد وسعر الشراء لكل سطر", "error");
     if (paid === null || paid > total)
       return toast("المبلغ المدفوع يجب ألا يزيد عن إجمالي الفاتورة", "error");
 
@@ -448,10 +454,10 @@ export function PurchaseFormModal({
         note,
         paid,
         update_cost: updateCost,
-        items: filled.map(({ l, grams, cost }) => ({
-          product_id: Number(l.productId),
-          grams: grams!,
-          cost_total: cost!,
+        items: filled.map(({ l, qty, unitCost }) => ({
+          variant_id: Number(l.variantId),
+          quantity: qty!,
+          unit_cost: unitCost!,
         })),
       });
       toast(`حُفظت فاتورة الشراء #${purchaseId} وأُضيفت الكميات إلى المخزون`);
@@ -526,35 +532,34 @@ export function PurchaseFormModal({
         </div>
 
         <div className="rounded-xl border border-line bg-white">
-          <div className="grid grid-cols-[1fr_8rem_9rem_8rem_2.25rem] gap-3 border-b border-line px-4 py-2.5 text-sm font-medium text-mist">
-            <span>المنتج</span>
-            <span>الوزن (كجم)</span>
-            <span>التكلفة ({settings.currency})</span>
-            <span className="text-end">تكلفة الكيلو</span>
+          <div className="grid grid-cols-[1fr_6rem_9rem_8rem_2.25rem] gap-3 border-b border-line px-4 py-2.5 text-sm font-medium text-dim">
+            <span>الصنف</span>
+            <span>العدد</span>
+            <span>سعر شراء القطعة</span>
+            <span className="text-end">الإجمالي</span>
             <span />
           </div>
           {lines.map((l, i) => {
-            const { grams, cost } = parsed[i];
-            const product = byId.get(l.productId);
-            const perKg = grams && cost ? Math.round((cost * 1000) / grams) : null;
+            const { qty, unitCost } = parsed[i];
+            const row = byId.get(l.variantId);
             return (
               <div
                 key={l.key}
-                className="grid grid-cols-[1fr_8rem_9rem_8rem_2.25rem] items-center gap-3 border-b border-line/70 px-4 py-2.5"
+                className="grid grid-cols-[1fr_6rem_9rem_8rem_2.25rem] items-center gap-3 border-b border-line/70 px-4 py-2.5"
               >
                 <Select
-                  value={l.productId}
-                  onChange={(e) => setLine(l.key, { productId: e.target.value })}
-                  aria-label="المنتج"
+                  value={l.variantId}
+                  onChange={(e) => setLine(l.key, { variantId: e.target.value })}
+                  aria-label="الصنف"
                 >
                   <option value="" disabled>
-                    اختر المنتج
+                    اختر الصنف
                   </option>
                   {groups.map(([group, items]) => (
                     <optgroup key={group} label={group}>
-                      {items.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
+                      {items.map((r) => (
+                        <option key={r.variant.id} value={r.variant.id}>
+                          {itemName(r.product.name, r.variant.label)}
                         </option>
                       ))}
                     </optgroup>
@@ -562,25 +567,28 @@ export function PurchaseFormModal({
                 </Select>
                 <Input
                   dir="ltr"
-                  inputMode="decimal"
-                  value={l.kg}
-                  onChange={(e) => setLine(l.key, { kg: e.target.value })}
-                  aria-label="الوزن"
-                  className={l.kg && !grams ? "border-gill" : undefined}
+                  inputMode="numeric"
+                  value={l.qty}
+                  onChange={(e) => setLine(l.key, { qty: e.target.value })}
+                  aria-label="العدد"
+                  className={l.qty && !qty ? "border-alert" : undefined}
                 />
                 <Input
                   dir="ltr"
                   inputMode="decimal"
-                  value={l.cost}
-                  onChange={(e) => setLine(l.key, { cost: e.target.value })}
-                  aria-label="التكلفة"
-                  className={l.cost && cost === null ? "border-gill" : undefined}
+                  value={l.unitCost}
+                  onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
+                  placeholder={row ? costText(row.variant.cost) : undefined}
+                  aria-label="سعر شراء القطعة"
+                  className={l.unitCost && unitCost === null ? "border-alert" : undefined}
                 />
                 <div className="text-end text-sm leading-5">
-                  <div className="font-medium">{perKg !== null ? formatAmount(perKg) : "—"}</div>
-                  {product && (
-                    <div className="text-xs text-mist" title="تكلفة الكيلو المسجّلة حالياً">
-                      الحالية {formatAmount(product.cost_per_kg)}
+                  <div className="font-medium">
+                    {qty && unitCost !== null ? formatAmount(qty * unitCost) : "—"}
+                  </div>
+                  {row && (
+                    <div className="text-xs text-dim" title="سعر الشراء المسجّل حالياً">
+                      الحالي {formatAmount(row.variant.cost)}
                     </div>
                   )}
                 </div>
@@ -634,7 +642,7 @@ export function PurchaseFormModal({
                 )}
               </div>
               {!payInFull && (
-                <p className="mt-1 text-xs text-mist">
+                <p className="mt-1 text-xs text-dim">
                   اكتب ما دُفع الآن، أو اتركه فارغاً إن كانت الفاتورة كلها آجلة.
                 </p>
               )}
@@ -642,23 +650,23 @@ export function PurchaseFormModal({
             <Toggle
               checked={updateCost}
               onChange={setUpdateCost}
-              label="تحديث تكلفة الكيلو للمنتجات"
-              description="تصبح تكلفة كل منتج هي تكلفة الكيلو في هذه الفاتورة، فيُحسب الربح بالسعر الجديد."
+              label="تحديث سعر الشراء للأصناف"
+              description="يصبح سعر شراء كل صنف هو سعره في هذه الفاتورة، فيُحسب الربح بالسعر الجديد."
             />
             <Field label="ملاحظة">
               {(id) => <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
             </Field>
           </div>
           <div className="flex flex-col gap-2">
-            <Lcd label="إجمالي الفاتورة" value={formatAmount(total)} unit={settings.currency} size="md" />
+            <Screen label="إجمالي الفاتورة" value={formatAmount(total)} unit={settings.currency} size="md" />
             <div className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-2.5 text-sm">
-              <span className="text-mist">يُضاف لحساب المورد</span>
+              <span className="text-dim">يُضاف لحساب المورد</span>
               <span
                 className={
                   remaining === null
-                    ? "font-semibold text-gill"
+                    ? "font-semibold text-alert"
                     : remaining > 0
-                      ? "font-semibold text-gill"
+                      ? "font-semibold text-alert"
                       : "font-semibold"
                 }
               >
@@ -712,20 +720,20 @@ function purchaseDocument(p: Purchase, settings: ReturnType<typeof useSession>["
 
 function itemColumns(p: Purchase): Column<Purchase["items"][number]>[] {
   return [
-    { header: "المنتج", cell: (i) => i.product_name },
+    { header: "الصنف", cell: (i) => itemName(i.product_name, i.variant_label) },
     {
-      header: "الوزن",
+      header: "العدد",
       numeric: true,
-      cell: (i) => formatWeight(i.grams),
-      total: formatWeight(p.grams),
+      cell: (i) => i.quantity,
+      total: p.pieces,
     },
     {
-      header: "تكلفة الكيلو",
+      header: "سعر القطعة",
       numeric: true,
-      cell: (i) => formatAmount(Math.round((i.cost_total * 1000) / i.grams)),
+      cell: (i) => formatAmount(Math.round(i.cost_total / i.quantity)),
     },
     {
-      header: "التكلفة",
+      header: "الإجمالي",
       numeric: true,
       cell: (i) => formatAmount(i.cost_total),
       total: formatAmount(p.total),
@@ -805,7 +813,7 @@ export function PurchaseDetailModal({
         <DataTable
           columns={itemColumns(purchase)}
           rows={purchase.items}
-          rowKey={(i) => i.product_name + i.grams}
+          rowKey={(i) => itemName(i.product_name, i.variant_label)}
         />
       </Panel>
     </Modal>
@@ -815,7 +823,7 @@ export function PurchaseDetailModal({
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-mist">{label}</dt>
+      <dt className="text-dim">{label}</dt>
       <dd className="font-medium">{value}</dd>
     </div>
   );
@@ -967,7 +975,7 @@ function PaymentModal({
           save();
         }}
       >
-        <Lcd
+        <Screen
           label="المستحق له حالياً"
           value={formatAmount(supplier.balance)}
           unit={settings.currency}
@@ -1061,7 +1069,7 @@ function StatementModal({
         screen && r.kind === "purchase" ? (
           <button
             type="button"
-            className="text-sea underline-offset-2 hover:underline"
+            className="text-chart underline-offset-2 hover:underline"
             onClick={() => setOpenPurchase(r.id)}
           >
             {describe(r)}
@@ -1168,11 +1176,11 @@ function StatementModal({
       <div className="mb-4 grid grid-cols-4 divide-x divide-x-reverse divide-line rounded-xl border border-line bg-white">
         {figures.map((f, i) => (
           <div key={f.label} className="px-4 py-3">
-            <div className="text-sm text-mist">{f.label}</div>
+            <div className="text-sm text-dim">{f.label}</div>
             <div
               className={
                 i === 3 && balance > 0
-                  ? "mt-0.5 text-lg font-semibold text-gill"
+                  ? "mt-0.5 text-lg font-semibold text-alert"
                   : "mt-0.5 text-lg font-semibold"
               }
             >

@@ -33,7 +33,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="flex h-full">
       <aside className="flex w-[92px] shrink-0 flex-col items-center bg-ink py-4 text-white">
         <div
-          className="mb-5 px-2 text-center font-sign text-xl leading-6 text-tag"
+          className="mb-5 px-2 text-center font-display text-lg leading-6 font-light text-white"
           title={settings.shop_name}
         >
           {settings.shop_name.split(" ").slice(0, 2).join(" ")}
@@ -45,16 +45,14 @@ export function Shell({ children }: { children: ReactNode }) {
               to={to}
               className={({ isActive }) =>
                 `flex flex-col items-center gap-1 rounded-xl py-2.5 text-xs transition-colors ${
-                  isActive ? "bg-white/12 text-white" : "text-white/60 hover:bg-white/6 hover:text-white"
+                  isActive
+                    ? "bg-white font-medium text-ink"
+                    : "text-white/60 hover:bg-white/8 hover:text-white"
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  <Icon className={`size-6 ${isActive ? "text-tag" : ""}`} strokeWidth={1.75} />
-                  {label}
-                </>
-              )}
+              <Icon className="size-6" strokeWidth={1.75} />
+              {label}
             </NavLink>
           ))}
         </nav>

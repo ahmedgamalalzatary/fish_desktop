@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, Field, Input } from "../components/ui";
 import { api } from "../lib/api";
 import type { SessionUser } from "../lib/types";
@@ -35,22 +35,16 @@ export function LoginPage({
 
   return (
     <div className="flex h-full">
-      <section className="relative hidden w-[44%] flex-col justify-between overflow-hidden bg-ink p-12 text-white lg:flex">
-        <Waves />
-        <div className="relative font-sign text-7xl leading-[1.15] text-tag">
-          سمك
-          <br />
-          طازة
-        </div>
-        <p className="relative max-w-xs text-lg leading-8 text-white/70">
-          البيع بالكيلو أو بالأوزان الجاهزة، والمخزون يُخصم مع كل فاتورة.
+      <section className="relative hidden w-[44%] flex-col items-center justify-center gap-10 overflow-hidden bg-ink p-12 text-white lg:flex">
+        <LockScreen />
+        <p className="max-w-xs text-center text-lg leading-8 text-white/65">
+          بيع الموبايلات والإكسسوارات بالقطعة، بكل سعة ولون، والمخزون يُخصم مع كل فاتورة.
         </p>
       </section>
-
       <section className="flex flex-1 items-center justify-center p-8">
         <form onSubmit={submit} className="w-full max-w-sm">
           <h1 className="text-3xl font-semibold">{firstRun ? "إنشاء حساب المدير" : "تسجيل الدخول"}</h1>
-          <p className="mt-2 mb-8 text-mist">
+          <p className="mt-2 mb-8 text-dim">
             {firstRun
               ? "هذا أول تشغيل للبرنامج. أنشئ حساب المدير لتضيف المنتجات والموظفين بعد ذلك."
               : "أدخل اسم المستخدم وكلمة المرور."}
@@ -103,7 +97,7 @@ export function LoginPage({
           </div>
 
           {error && (
-            <p role="alert" className="mt-4 rounded-lg bg-gill-soft px-3 py-2 text-sm text-gill">
+            <p role="alert" className="mt-4 rounded-lg bg-alert-soft px-3 py-2 text-sm text-alert">
               {error}
             </p>
           )}
@@ -117,16 +111,27 @@ export function LoginPage({
   );
 }
 
-/** Quiet water lines behind the sign. */
-function Waves() {
+/** A phone on the counter, showing the shop's clock on its lock screen. */
+function LockScreen() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 10_000);
+    return () => clearInterval(timer);
+  }, []);
+  const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const date = now.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" });
+
   return (
-    <svg className="absolute inset-0 size-full text-white/[0.06]" preserveAspectRatio="none" aria-hidden>
-      <defs>
-        <pattern id="waves" width="120" height="36" patternUnits="userSpaceOnUse">
-          <path d="M0 18 Q 30 6 60 18 T 120 18" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#waves)" />
-    </svg>
+    <div className="rounded-[3.25rem] bg-ink-3 p-2 shadow-[0_40px_80px_-20px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.12)]">
+      <div className="relative flex h-[30rem] w-60 flex-col items-center rounded-[2.75rem] bg-screen px-6 pt-4 text-screen-ink">
+        <div className="h-6 w-20 rounded-full bg-black ring-1 ring-white/5" aria-hidden />
+        <div className="mt-10 text-sm text-screen-ink/70">{date}</div>
+        <div dir="ltr" className="font-display text-6xl leading-tight font-extralight">
+          {time}
+        </div>
+        <div className="mt-auto mb-8 text-center font-display text-xl font-light">نقطة بيع الموبايلات</div>
+        <div className="mb-2 h-1 w-24 rounded-full bg-screen-ink/60" aria-hidden />
+      </div>
+    </div>
   );
 }

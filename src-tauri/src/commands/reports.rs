@@ -31,9 +31,9 @@ pub struct Summary {
     revenue: i64,
     cost: i64,
     profit: i64,
-    grams_sold: i64,
+    units_sold: i64,
     purchases_cost: i64,
-    purchases_grams: i64,
+    purchases_units: i64,
     supplier_paid: i64,
     by_payment: Vec<PaymentTotal>,
 }
@@ -48,14 +48,14 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         [&from, &to],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
-    let grams_sold: i64 = db.query_row(
-        "SELECT COALESCE(SUM(i.weight_grams), 0) FROM sale_items i JOIN sales s ON s.id = i.sale_id
+    let units_sold: i64 = db.query_row(
+        "SELECT COALESCE(SUM(i.quantity), 0) FROM sale_items i JOIN sales s ON s.id = i.sale_id
          WHERE date(s.created_at) BETWEEN ?1 AND ?2",
         [&from, &to],
         |r| r.get(0),
     )?;
-    let (purchases_cost, purchases_grams): (i64, i64) = db.query_row(
-        "SELECT COALESCE(SUM(cost_total), 0), COALESCE(SUM(change_grams), 0) FROM stock_movements
+    let (purchases_cost, purchases_units): (i64, i64) = db.query_row(
+        "SELECT COALESCE(SUM(cost_total), 0), COALESCE(SUM(change_qty), 0) FROM stock_movements
          WHERE reason = 'purchase' AND date(created_at) BETWEEN ?1 AND ?2",
         [&from, &to],
         |r| Ok((r.get(0)?, r.get(1)?)),
@@ -83,9 +83,9 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         revenue,
         cost,
         profit: revenue - cost,
-        grams_sold,
+        units_sold,
         purchases_cost,
-        purchases_grams,
+        purchases_units,
         supplier_paid,
         by_payment,
     })
@@ -121,11 +121,11 @@ pub fn report_daily(state: State<AppState>, from: String, to: String) -> AppResu
 
 #[derive(Serialize)]
 pub struct ProductRow {
-    product_id: i64,
+    variant_id: i64,
     name: String,
+    variant_label: String,
     category_name: String,
     units: i64,
-    grams: i64,
     revenue: i64,
     cost: i64,
     profit: i64,
@@ -141,24 +141,23 @@ pub fn report_by_product(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT p.id, p.name, c.name,
-                SUM(CASE WHEN i.variant_id IS NOT NULL THEN i.quantity ELSE 0 END),
-                SUM(i.weight_grams), SUM(i.line_total), SUM(i.line_cost)
+        "SELECT v.id, p.name, v.label, c.name, SUM(i.quantity), SUM(i.line_total), SUM(i.line_cost)
          FROM sale_items i
          JOIN sales s ON s.id = i.sale_id
+         JOIN product_variants v ON v.id = i.variant_id
          JOIN products p ON p.id = i.product_id
          JOIN categories c ON c.id = p.category_id
          WHERE date(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.id ORDER BY SUM(i.line_total) DESC",
+         GROUP BY v.id ORDER BY SUM(i.line_total) DESC",
         [&from, &to],
         |r| {
             let (revenue, cost): (i64, i64) = (r.get(5)?, r.get(6)?);
             Ok(ProductRow {
-                product_id: r.get(0)?,
+                variant_id: r.get(0)?,
                 name: r.get(1)?,
-                category_name: r.get(2)?,
-                units: r.get(3)?,
-                grams: r.get(4)?,
+                variant_label: r.get(2)?,
+                category_name: r.get(3)?,
+                units: r.get(4)?,
                 revenue,
                 cost,
                 profit: revenue - cost,
@@ -173,7 +172,7 @@ pub struct CategoryRow {
     name: String,
     parent_id: Option<i64>,
     parent_name: Option<String>,
-    grams: i64,
+    units: i64,
     revenue: i64,
     profit: i64,
 }
@@ -189,7 +188,7 @@ pub fn report_by_category(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT c.id, c.name, pc.id, pc.name, SUM(i.weight_grams), SUM(i.line_total), SUM(i.line_total - i.line_cost)
+        "SELECT c.id, c.name, pc.id, pc.name, SUM(i.quantity), SUM(i.line_total), SUM(i.line_total - i.line_cost)
          FROM sale_items i
          JOIN sales s ON s.id = i.sale_id
          JOIN products p ON p.id = i.product_id
@@ -204,7 +203,7 @@ pub fn report_by_category(
                 name: r.get(1)?,
                 parent_id: r.get(2)?,
                 parent_name: r.get(3)?,
-                grams: r.get(4)?,
+                units: r.get(4)?,
                 revenue: r.get(5)?,
                 profit: r.get(6)?,
             })
@@ -257,7 +256,8 @@ pub struct MovementRow {
     id: i64,
     created_at: String,
     product_name: String,
-    change_grams: i64,
+    variant_label: String,
+    change_qty: i64,
     reason: String,
     cost_total: Option<i64>,
     note: Option<String>,
@@ -278,10 +278,11 @@ pub fn report_movements(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT m.id, m.created_at, p.name, m.change_grams, m.reason, m.cost_total, m.note, m.sale_id,
+        "SELECT m.id, m.created_at, p.name, v.label, m.change_qty, m.reason, m.cost_total, m.note, m.sale_id,
                 m.purchase_id, s.name, u.name
          FROM stock_movements m
          JOIN products p ON p.id = m.product_id
+         JOIN product_variants v ON v.id = m.variant_id
          JOIN users u ON u.id = m.user_id
          LEFT JOIN purchases pu ON pu.id = m.purchase_id
          LEFT JOIN suppliers s ON s.id = pu.supplier_id
@@ -293,14 +294,15 @@ pub fn report_movements(
                 id: r.get(0)?,
                 created_at: r.get(1)?,
                 product_name: r.get(2)?,
-                change_grams: r.get(3)?,
-                reason: r.get(4)?,
-                cost_total: r.get(5)?,
-                note: r.get(6)?,
-                sale_id: r.get(7)?,
-                purchase_id: r.get(8)?,
-                supplier_name: r.get(9)?,
-                user_name: r.get(10)?,
+                variant_label: r.get(3)?,
+                change_qty: r.get(4)?,
+                reason: r.get(5)?,
+                cost_total: r.get(6)?,
+                note: r.get(7)?,
+                sale_id: r.get(8)?,
+                purchase_id: r.get(9)?,
+                supplier_name: r.get(10)?,
+                user_name: r.get(11)?,
             })
         },
     )
@@ -312,7 +314,7 @@ pub struct SupplierRow {
     name: String,
     purchases_count: i64,
     purchases_total: i64,
-    grams: i64,
+    pieces: i64,
     paid: i64,
     /// Current balance, regardless of the period.
     balance: i64,
@@ -332,7 +334,7 @@ pub fn report_by_supplier(
              SELECT s.id, s.name,
                     (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2) AS cnt,
                     COALESCE((SELECT SUM(total) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0) AS total,
-                    COALESCE((SELECT SUM(m.change_grams) FROM stock_movements m JOIN purchases p ON p.id = m.purchase_id
+                    COALESCE((SELECT SUM(m.change_qty) FROM stock_movements m JOIN purchases p ON p.id = m.purchase_id
                               WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0),
                     COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.supplier_id = s.id AND date(sp.created_at) BETWEEN ?1 AND ?2), 0) AS paid,
                     {BALANCE_SQL} AS balance
@@ -346,7 +348,7 @@ pub fn report_by_supplier(
             name: r.get(1)?,
             purchases_count: r.get(2)?,
             purchases_total: r.get(3)?,
-            grams: r.get(4)?,
+            pieces: r.get(4)?,
             paid: r.get(5)?,
             balance: r.get(6)?,
         })
