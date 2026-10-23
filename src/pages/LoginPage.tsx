@@ -41,8 +41,8 @@ export function LoginPage({
           بيع الموبايلات والإكسسوارات بالقطعة، بكل سعة ولون، والمخزون يُخصم مع كل فاتورة.
         </p>
       </section>
-      <section className="flex flex-1 items-center justify-center p-8">
-        <form onSubmit={submit} className="w-full max-w-sm">
+      <section className="flex flex-1 flex-col items-center p-8">
+        <form onSubmit={submit} className="my-auto w-full max-w-sm">
           <h1 className="text-3xl font-semibold">{firstRun ? "إنشاء حساب المدير" : "تسجيل الدخول"}</h1>
           <p className="mt-2 mb-8 text-dim">
             {firstRun
@@ -106,6 +106,16 @@ export function LoginPage({
             {firstRun ? "إنشاء الحساب والدخول" : "دخول"}
           </Button>
         </form>
+        <footer className="flex items-center gap-3 text-sm text-dim">
+          <img src="/logo.jpeg" alt="" className="size-10 rounded-full" />
+          <span>
+            تصميم وتطوير{" "}
+            <span dir="ltr" className="font-medium text-ink-2">
+              BIT Technologies
+            </span>{" "}
+            © {new Date().getFullYear()}
+          </span>
+        </footer>
       </section>
     </div>
   );
