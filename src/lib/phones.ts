@@ -1,4 +1,5 @@
 import { parseCount, parseMoney } from "./format";
+import { useToast } from "./toast";
 import type { Phone, PhoneInput } from "./types";
 
 /** A phone being typed in: every field is still text. `productId` is used where the model is picked per row. */
@@ -78,3 +79,24 @@ export function repeatedSerials(drafts: PhoneDraft[]): Set<string> {
 
 export const storageOptions = ["64GB", "128GB", "256GB", "512GB", "1TB"];
 export const colorOptions = ["أسود", "أبيض", "فضي", "رمادي", "ذهبي", "أزرق", "أخضر", "بنفسجي", "أحمر"];
+
+/** Checks the rows of a phone form; returns the inputs, or shows what is wrong and returns null. */
+export function useReadDrafts() {
+  const toast = useToast();
+  return (drafts: PhoneDraft[]): PhoneInput[] | null => {
+    if (repeatedSerials(drafts).size > 0) {
+      toast("رقم تسلسلي مكرر في القائمة", "error");
+      return null;
+    }
+    const inputs: PhoneInput[] = [];
+    for (const d of drafts.filter((d) => !isBlank(d))) {
+      const read = readDraft(d);
+      if ("error" in read) {
+        toast(read.error, "error");
+        return null;
+      }
+      inputs.push(read.input);
+    }
+    return inputs;
+  };
+}

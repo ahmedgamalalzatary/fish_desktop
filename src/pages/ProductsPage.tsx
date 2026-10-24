@@ -1,7 +1,8 @@
-import { ArchiveRestore, Pencil, Plus, Search, Smartphone, Trash2 } from "lucide-react";
+import { ArchiveRestore, ChevronLeft, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type Column } from "../components/DataTable";
 import { PhoneLines } from "../components/PhoneLines";
+import { AddPhonesModal, ModelPhonesModal } from "../components/PhoneModals";
 import {
   Badge,
   Button,
@@ -12,22 +13,14 @@ import {
   Modal,
   PageHeader,
   Panel,
-  Select,
   Toggle,
 } from "../components/ui";
 import { api } from "../lib/api";
 import { formatAmount, formatPhones } from "../lib/format";
-import {
-  draftFromPhone,
-  isBlank,
-  newDraft,
-  readDraft,
-  repeatedSerials,
-  type PhoneDraft,
-} from "../lib/phones";
+import { newDraft, useReadDrafts, type PhoneDraft } from "../lib/phones";
 import { errorMessage, useToast } from "../lib/toast";
 import { useResource } from "../lib/useResource";
-import type { PhoneInput, Product } from "../lib/types";
+import type { Product } from "../lib/types";
 
 /** "18,500.00" or "18,500.00 – 24,000.00" for the phones of a model in stock. */
 function priceRange(p: Product) {
@@ -44,11 +37,14 @@ export function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<Product | null>(null);
   const [adding, setAdding] = useState<Product | null>(null);
+  // An id rather than the product, so the window shows fresh phones after each reload.
+  const [viewingId, setViewingId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
 
   const [data, load] = useResource(useCallback(() => api.listProducts(true), []));
   const products = useMemo(() => data ?? [], [data]);
   const active = products.filter((p) => p.active);
+  const viewing = products.find((p) => p.id === viewingId);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,7 +95,10 @@ export function ProductsPage() {
       numeric: true,
       cell: (p) =>
         p.phones.length ? (
-          formatPhones(p.phones.length)
+          <span className="inline-flex items-center gap-1 font-medium underline decoration-line underline-offset-4">
+            {formatPhones(p.phones.length)}
+            <ChevronLeft className="size-4 text-dim" />
+          </span>
         ) : (
           <span className="font-medium text-alert">لا يوجد</span>
         ),
@@ -107,7 +106,8 @@ export function ProductsPage() {
     {
       header: "",
       cell: (p) => (
-        <div className="flex justify-end gap-1">
+        // The row opens the model's phones; its buttons do their own thing.
+        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           {p.active ? (
             <>
               <Button tone="outline" size="sm" onClick={() => setAdding(p)}>
@@ -176,12 +176,18 @@ export function ProductsPage() {
               "أضف موديلاً باسمه الكامل، مثل «Samsung Galaxy S24 Ultra»، ثم أضف أجهزته برقم كل جهاز."}
           </Empty>
         ) : (
-          <DataTable columns={columns} rows={visible} rowKey={(p) => p.id} />
+          <DataTable
+            columns={columns}
+            rows={visible}
+            rowKey={(p) => p.id}
+            onRowClick={(p) => setViewingId(p.id)}
+          />
         )}
       </Panel>
 
       {creating && <NewModelModal onClose={() => setCreating(false)} onSaved={saved} />}
       {renaming && <RenameModal product={renaming} onClose={() => setRenaming(null)} onSaved={saved} />}
+      {viewing && <ModelPhonesModal product={viewing} onClose={() => setViewingId(null)} onChanged={load} />}
       {adding && (
         <AddPhonesModal products={active} product={adding} onClose={() => setAdding(null)} onSaved={saved} />
       )}
@@ -196,27 +202,6 @@ export function ProductsPage() {
       )}
     </div>
   );
-}
-
-/** Checks the rows of a phone form; returns the inputs, or shows what is wrong and returns null. */
-function useReadDrafts() {
-  const toast = useToast();
-  return (drafts: PhoneDraft[]): PhoneInput[] | null => {
-    if (repeatedSerials(drafts).size > 0) {
-      toast("رقم تسلسلي مكرر في القائمة", "error");
-      return null;
-    }
-    const inputs: PhoneInput[] = [];
-    for (const d of drafts.filter((d) => !isBlank(d))) {
-      const read = readDraft(d);
-      if ("error" in read) {
-        toast(read.error, "error");
-        return null;
-      }
-      inputs.push(read.input);
-    }
-    return inputs;
-  };
 }
 
 function NewModelModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -342,95 +327,6 @@ function RenameModal({
         <Field label="اسم الموديل" hint="الفواتير السابقة تحتفظ بالاسم الذي بيعت به.">
           {(id) => <Input id={id} dir="auto" value={name} onChange={(e) => setName(e.target.value)} />}
         </Field>
-      </form>
-    </Modal>
-  );
-}
-
-/** Adds phones of one model without a supplier invoice. Without `product`, the model is picked here. */
-export function AddPhonesModal({
-  products,
-  product,
-  onClose,
-  onSaved,
-}: {
-  products: Product[];
-  product?: Product;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const toast = useToast();
-  const readDrafts = useReadDrafts();
-  const [productId, setProductId] = useState(product ? String(product.id) : "");
-  const [drafts, setDrafts] = useState<PhoneDraft[]>(() => {
-    // Start from the model's latest phone, so its storage, color and prices are already filled in.
-    const last = product?.phones[product.phones.length - 1];
-    if (!last) return [newDraft()];
-    return [{ ...draftFromPhone(last), serial: "", battery: "" }];
-  });
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    if (!productId) return toast("اختر الموديل", "error");
-    const phones = readDrafts(drafts);
-    if (!phones) return;
-    if (phones.length === 0) return toast("أضف جهازاً واحداً على الأقل", "error");
-    setBusy(true);
-    try {
-      await api.addPhones(Number(productId), phones);
-      toast(`أُضيف ${formatPhones(phones.length)} إلى المخزون`);
-      onSaved();
-    } catch (e) {
-      toast(errorMessage(e), "error");
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      title={product ? `إضافة أجهزة · ${product.name}` : "إضافة أجهزة"}
-      onClose={onClose}
-      width="max-w-5xl"
-      footer={
-        <>
-          <span className="me-auto text-sm text-dim">
-            <Smartphone className="me-1 inline size-4" />
-            {formatPhones(drafts.filter((d) => !isBlank(d)).length)}
-          </span>
-          <Button tone="outline" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button onClick={save} disabled={busy}>
-            إضافة إلى المخزون
-          </Button>
-        </>
-      }
-    >
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          save();
-        }}
-      >
-        {!product && (
-          <Field label="الموديل" className="max-w-md">
-            {(id) => (
-              <Select id={id} value={productId} onChange={(e) => setProductId(e.target.value)}>
-                <option value="" disabled>
-                  اختر الموديل
-                </option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        )}
-        <PhoneLines drafts={drafts} onChange={setDrafts} />
-        <button type="submit" hidden />
       </form>
     </Modal>
   );
