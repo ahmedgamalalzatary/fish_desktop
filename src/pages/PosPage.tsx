@@ -7,6 +7,7 @@ import {
   Search,
   Smartphone,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportButtons } from "../components/ExportButtons";
@@ -25,6 +26,7 @@ import {
   isoDate,
   parseMoney,
   paymentLabels,
+  paymentNames,
 } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
@@ -39,6 +41,7 @@ interface CartLine {
 const lineTotal = (l: CartLine) => l.variant.price * l.quantity;
 
 const paymentIcons = { cash: Banknote, card: CreditCard, wallet: Smartphone };
+const methods = Object.keys(paymentLabels) as PaymentMethod[];
 
 /** A product sold without options has one variant with no label. */
 const hasOptions = (p: Product) => p.variants.length > 1 || p.variants[0]?.label !== "";
@@ -273,7 +276,7 @@ export function PosPage() {
           <Segmented
             value={payment}
             onChange={setPayment}
-            options={(Object.keys(paymentLabels) as PaymentMethod[]).map((m) => {
+            options={methods.map((m) => {
               const Icon = paymentIcons[m];
               return {
                 value: m,
@@ -557,6 +560,12 @@ function PickVariantModal({
   );
 }
 
+/**
+ * Takes the money, with one method or several. Each method is a row; the keypad types into the
+ * selected one. The method chosen on the ticket covers whatever the others leave until the cashier
+ * types into it, so with cash chosen, "15,000 by card and the rest cash" is: tap card, type 15000,
+ * confirm. Only cash can be over the total, since change is given in cash.
+ */
 function CheckoutModal({
   cart,
   total,
@@ -572,27 +581,52 @@ function CheckoutModal({
 }) {
   const { settings } = useSession();
   const toast = useToast();
-  const [paidText, setPaidText] = useState("");
+  const [texts, setTexts] = useState<Record<PaymentMethod, string>>({ cash: "", card: "", wallet: "" });
+  // The method that covers the rest; null once the cashier has typed into it.
+  const [auto, setAuto] = useState<PaymentMethod | null>(payment);
+  const [active, setActive] = useState<PaymentMethod>(payment);
+  // A value that was filled in for the cashier is replaced, not appended to, by the next key.
+  const [fresh, setFresh] = useState(true);
   const [busy, setBusy] = useState(false);
-  const cash = payment === "cash";
-  const paid = cash ? (paidText === "" ? total : (parseMoney(paidText) ?? 0)) : total;
-  const change = paid - total;
 
-  // Common notes the customer is likely to hand over.
+  const typed = (m: PaymentMethod) => (m === auto ? 0 : (parseMoney(texts[m]) ?? 0));
+  const othersTotal = methods.reduce((s, m) => s + typed(m), 0);
+  const amountOf = (m: PaymentMethod) => (m === auto ? Math.max(total - othersTotal, 0) : typed(m));
+  const shown = (m: PaymentMethod) =>
+    m === auto ? (amountOf(m) ? String(amountOf(m) / 100) : "") : texts[m];
+  const given = methods.reduce((s, m) => s + amountOf(m), 0);
+  const nonCash = amountOf("card") + amountOf("wallet");
+  const remaining = total - given;
+  const tooMuchNonCash = nonCash > total;
+  const canConfirm = remaining <= 0 && !tooMuchNonCash && !busy;
+  const cashDue = Math.max(total - nonCash, 0);
+
+  const select = (m: PaymentMethod) => {
+    setActive(m);
+    setFresh(true);
+    if (m !== auto && texts[m] === "" && remaining > 0)
+      setTexts((t) => ({ ...t, [m]: String(remaining / 100) }));
+  };
+  const setText = (m: PaymentMethod, text: string) => {
+    setTexts((t) => ({ ...t, [m]: text }));
+    if (m === auto) setAuto(null);
+    setFresh(false);
+  };
+
+  // Common notes the customer is likely to hand over for the cash part.
   const suggestions = [
-    ...new Set([50, 100, 200, 500, 1000].map((n) => Math.ceil(total / (n * 100)) * n * 100)),
+    ...new Set([50, 100, 200, 500, 1000].map((n) => Math.ceil(cashDue / (n * 100)) * n * 100)),
   ]
-    .filter((v) => v > total)
+    .filter((v) => v > cashDue)
     .slice(0, 3);
 
   const confirm = async () => {
-    if (change < 0 || busy) return;
+    if (!canConfirm) return;
     setBusy(true);
     try {
       const sale = await api.createSale(
         cart.map((l) => ({ variant_id: l.variant.id, quantity: l.quantity })),
-        payment,
-        paid,
+        methods.filter((m) => amountOf(m) > 0).map((m) => ({ method: m, amount: amountOf(m) })),
       );
       onDone(sale);
     } catch (e) {
@@ -601,17 +635,31 @@ function CheckoutModal({
     }
   };
 
+  const status = tooMuchNonCash
+    ? { label: "البطاقة والمحفظة أكثر من المطلوب", value: nonCash - total, warn: true }
+    : remaining > 0
+      ? { label: "المتبقي", value: remaining, warn: false }
+      : {
+          label: remaining < 0 ? "الباقي للعميل" : "تم سداد المبلغ",
+          value: Math.abs(remaining),
+          warn: false,
+        };
+
   return (
     <Modal
-      title={`الدفع · ${paymentLabels[payment]}`}
+      title="الدفع"
       onClose={onClose}
-      width={cash ? "max-w-2xl" : "max-w-md"}
+      width="max-w-3xl"
       footer={
         <>
+          <span className="me-auto text-sm text-dim">
+            {given > 0 &&
+              `المدفوع ${formatMoney(given, settings.currency)} من ${formatMoney(total, settings.currency)}`}
+          </span>
           <Button tone="outline" onClick={onClose}>
             رجوع
           </Button>
-          <Button tone="pay" size="lg" onClick={confirm} disabled={change < 0 || busy} data-autofocus>
+          <Button tone="pay" size="lg" onClick={confirm} disabled={!canConfirm} data-autofocus>
             تأكيد الدفع
           </Button>
         </>
@@ -622,44 +670,94 @@ function CheckoutModal({
           e.preventDefault();
           confirm();
         }}
-        className={cx("grid gap-5", cash && "grid-cols-2")}
+        className="grid grid-cols-[1.1fr_1fr] gap-6"
       >
         <div className="flex flex-col gap-3">
-          <Screen label="المطلوب" value={formatAmount(total)} unit={settings.currency} />
-          {cash && (
-            <>
-              <Screen
-                label="المدفوع"
-                value={paidText === "" ? formatAmount(total) : paidText}
-                unit={settings.currency}
-                size="md"
-              />
-              <Screen
-                label={change < 0 ? "المبلغ ناقص" : "الباقي للعميل"}
-                value={formatAmount(Math.abs(change))}
-                unit={settings.currency}
-                warn={change < 0}
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Button tone="outline" className="justify-center" onClick={() => setPaidText("")}>
-                  المبلغ بالضبط
-                </Button>
-                {suggestions.map((s) => (
-                  <Button
-                    key={s}
-                    tone="outline"
-                    className="justify-center"
-                    onClick={() => setPaidText(String(s / 100))}
+          <Screen
+            label={`${status.label} · المطلوب ${formatAmount(total)}`}
+            value={formatAmount(status.value)}
+            unit={settings.currency}
+            warn={status.warn}
+          />
+          <div role="radiogroup" aria-label="طرق الدفع" className="flex flex-col gap-2">
+            {methods.map((m) => {
+              const Icon = paymentIcons[m];
+              const selected = active === m;
+              const text = shown(m);
+              return (
+                <div
+                  key={m}
+                  className={cx(
+                    "flex items-center gap-1 rounded-2xl border-2 bg-white pe-1 transition-colors",
+                    selected ? "border-ink" : "border-transparent",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => select(m)}
+                    className="flex h-16 flex-1 items-center gap-3 ps-4 text-start"
                   >
-                    {s / 100}
-                  </Button>
-                ))}
-              </div>
-            </>
-          )}
-          {!cash && <p className="text-sm text-dim">تأكد من نجاح العملية على جهاز الدفع قبل التأكيد.</p>}
+                    <Icon className={cx("size-5", selected ? "text-ink" : "text-dim")} />
+                    <span className="font-medium">{paymentLabels[m]}</span>
+                    {m === auto && <span className="text-xs text-dim">الباقي تلقائياً</span>}
+                    <span
+                      dir="ltr"
+                      className={cx(
+                        "ms-auto font-display text-2xl font-light",
+                        text === "" && "text-line",
+                        selected && fresh && text !== "" && "rounded bg-ink/[0.07] px-1",
+                      )}
+                    >
+                      {text === "" ? "0" : text}
+                      {selected && !fresh && <span className="ms-0.5 animate-pulse text-dim">|</span>}
+                    </span>
+                  </button>
+                  {text !== "" && (
+                    <Button
+                      tone="ghost"
+                      size="icon"
+                      onClick={() => (setText(m, ""), setActive(m))}
+                      aria-label={`مسح ${paymentLabels[m]}`}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-sm text-dim">
+            {active === "cash"
+              ? "اكتب المبلغ الذي سلّمه العميل نقداً، ويُحسب الباقي تلقائياً."
+              : "تأكد من نجاح العملية على جهاز الدفع قبل التأكيد."}
+          </p>
         </div>
-        {cash && <Keypad value={paidText} onChange={setPaidText} maxDecimals={2} />}
+        <div className="flex flex-col gap-3">
+          <Keypad value={fresh ? "" : texts[active]} onChange={(v) => setText(active, v)} maxDecimals={2} />
+          {active === "cash" && cashDue > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                tone="outline"
+                className="justify-center"
+                onClick={() => setText("cash", String(cashDue / 100))}
+              >
+                المبلغ بالضبط
+              </Button>
+              {suggestions.map((s) => (
+                <Button
+                  key={s}
+                  tone="outline"
+                  className="justify-center"
+                  onClick={() => setText("cash", String(s / 100))}
+                >
+                  {s / 100}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
         <button type="submit" hidden />
       </form>
     </Modal>
@@ -746,7 +844,7 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
                     { header: "رقم الفاتورة", cell: (s) => s.id },
                     { header: "الوقت", cell: (s) => formatDateTime(s.created_at).split(" ")[1] },
                     { header: "الكاشير", cell: (s) => s.cashier_name },
-                    { header: "الدفع", cell: (s) => paymentLabels[s.payment_method] },
+                    { header: "الدفع", cell: (s) => paymentNames(s.methods) },
                     { header: "الإجمالي", numeric: true, cell: (s) => formatAmount(s.total) },
                   ],
                   rows: sales ?? [],
@@ -780,7 +878,7 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
                   <span className="text-sm text-dim" dir="ltr">
                     {formatDateTime(s.created_at).split(" ")[1]}
                   </span>
-                  <span className="text-sm text-dim">{paymentLabels[s.payment_method]}</span>
+                  <span className="text-sm text-dim">{paymentNames(s.methods)}</span>
                   <span className="text-sm text-dim">{s.cashier_name}</span>
                   <span className="ms-auto font-semibold">{formatAmount(s.total)}</span>
                 </button>

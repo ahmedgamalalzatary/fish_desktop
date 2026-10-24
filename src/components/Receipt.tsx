@@ -43,21 +43,18 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
             {formatAmount(sale.total)} {currency}
           </span>
         </div>
-        <div className="flex justify-between">
-          <span>طريقة الدفع</span>
-          <span>{paymentLabels[sale.payment_method]}</span>
-        </div>
-        {sale.payment_method === "cash" && (
-          <>
-            <div className="flex justify-between">
-              <span>المدفوع</span>
-              <span>{formatAmount(sale.paid)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>الباقي</span>
-              <span>{formatAmount(sale.change_due)}</span>
-            </div>
-          </>
+        {sale.payments.map((p) => (
+          <div key={p.method} className="flex justify-between">
+            <span>{paymentLabels[p.method]}</span>
+            {/* Cash shows what was handed over; the change line below gives the rest back. */}
+            <span>{formatAmount(p.method === "cash" ? p.amount + sale.change_due : p.amount)}</span>
+          </div>
+        ))}
+        {sale.change_due > 0 && (
+          <div className="flex justify-between">
+            <span>الباقي للعميل</span>
+            <span>{formatAmount(sale.change_due)}</span>
+          </div>
         )}
       </div>
 

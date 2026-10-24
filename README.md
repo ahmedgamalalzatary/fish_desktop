@@ -19,10 +19,15 @@ A point-of-sale desktop app for a single mobile phone shop (one device, no branc
   adds them to stock, and can update each item's buy price. Pay in full, in part, or on credit;
   the unpaid part goes to the supplier's balance. Record later payments, view and print a supplier
   statement, and delete an invoice entered by mistake (its stock is taken back out).
-- **Sales:** cash (with change calculation), card or e-wallet. 80 mm thermal receipt.
-- **Reports:** summary with a daily chart, receipts, products, categories (with roll-up),
-  employees, purchases, suppliers (purchases, payments and what is owed), current stock,
-  and stock movements, for any date range.
+- **Sales:** cash (with change calculation), card or e-wallet, or a mix of them in one sale
+  (e.g. 20,000 cash and 15,000 by card). Only cash can be over the total. 80 mm thermal receipt.
+- **Expenses:** anyone signed in records an amount and a reason; it is booked under their name.
+  Cashiers see and can take back only their own expenses of the day.
+- **Reports:** summary with a daily chart, a profit statement (sales − cost of pieces sold −
+  expenses = net profit) with a daily / monthly / yearly breakdown of what was bought, sold,
+  spent and earned, receipts, products, categories (with roll-up), employees, purchases
+  (per invoice or per item), suppliers (purchases, payments and what is owed), expenses
+  (per employee), current stock, and stock movements, for any date range.
 - **Print & PDF:** every report, the sales lists, and each receipt can be printed or saved as PDF.
   PDFs are rendered by WebView2 itself, so Arabic text is shaped correctly.
 - **Backup:** a one-click database copy from Settings.

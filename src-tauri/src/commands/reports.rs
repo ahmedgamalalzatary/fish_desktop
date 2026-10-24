@@ -1,8 +1,9 @@
 use super::suppliers::BALANCE_SQL;
-use crate::error::AppResult;
+use crate::error::{AppResult, invalid};
 use crate::state::AppState;
 use rusqlite::{Connection, Params, Row};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use tauri::State;
 
 // All date ranges are inclusive local dates in `YYYY-MM-DD` form.
@@ -30,8 +31,12 @@ pub struct Summary {
     sales_count: i64,
     revenue: i64,
     cost: i64,
+    /// Revenue minus the cost of the pieces sold.
     profit: i64,
     units_sold: i64,
+    expenses: i64,
+    /// Profit after expenses.
+    net_profit: i64,
     purchases_cost: i64,
     purchases_units: i64,
     supplier_paid: i64,
@@ -65,10 +70,16 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         [&from, &to],
         |r| r.get(0),
     )?;
+    let expenses: i64 = db.query_row(
+        "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE date(created_at) BETWEEN ?1 AND ?2",
+        [&from, &to],
+        |r| r.get(0),
+    )?;
+    // A split sale counts once under each method it used; the amounts still add up to the revenue.
     let by_payment = query(
         &db,
-        "SELECT payment_method, COUNT(*), SUM(total) FROM sales
-         WHERE date(created_at) BETWEEN ?1 AND ?2 GROUP BY payment_method ORDER BY SUM(total) DESC",
+        "SELECT p.method, COUNT(*), SUM(p.amount) FROM sale_payments p JOIN sales s ON s.id = p.sale_id
+         WHERE date(s.created_at) BETWEEN ?1 AND ?2 GROUP BY p.method ORDER BY SUM(p.amount) DESC",
         [&from, &to],
         |r| {
             Ok(PaymentTotal {
@@ -84,6 +95,8 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         cost,
         profit: revenue - cost,
         units_sold,
+        expenses,
+        net_profit: revenue - cost - expenses,
         purchases_cost,
         purchases_units,
         supplier_paid,
@@ -114,6 +127,130 @@ pub fn report_daily(state: State<AppState>, from: String, to: String) -> AppResu
                 sales_count: r.get(1)?,
                 revenue: r.get(2)?,
                 profit: r.get(3)?,
+            })
+        },
+    )
+}
+
+#[derive(Serialize, Default)]
+pub struct PeriodRow {
+    /// `YYYY-MM-DD`, `YYYY-MM` or `YYYY`, depending on the grouping.
+    period: String,
+    sales_count: i64,
+    units_sold: i64,
+    revenue: i64,
+    cost: i64,
+    profit: i64,
+    expenses: i64,
+    net_profit: i64,
+    purchases_cost: i64,
+    purchases_units: i64,
+}
+
+/// Bought, sold, spent and earned per day, month or year. Periods with no activity are left out.
+#[tauri::command]
+pub fn report_periods(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    group: String,
+) -> AppResult<Vec<PeriodRow>> {
+    state.admin()?;
+    let db = state.db.lock().unwrap();
+    periods(&db, &from, &to, &group)
+}
+
+pub fn periods(db: &Connection, from: &str, to: &str, group: &str) -> AppResult<Vec<PeriodRow>> {
+    let format = match group {
+        "day" => "%Y-%m-%d",
+        "month" => "%Y-%m",
+        "year" => "%Y",
+        _ => return invalid("تجميع غير صحيح"),
+    };
+    let mut rows: BTreeMap<String, PeriodRow> = BTreeMap::new();
+    let mut add = |sql: &str, apply: fn(&mut PeriodRow, i64, i64)| -> AppResult<()> {
+        for (period, a, b) in query(db, sql, [format, from, to], |r| {
+            Ok((r.get::<_, String>(0)?, r.get(1)?, r.get(2)?))
+        })? {
+            let row = rows.entry(period.clone()).or_insert_with(|| PeriodRow {
+                period,
+                ..Default::default()
+            });
+            apply(row, a, b);
+        }
+        Ok(())
+    };
+    add(
+        "SELECT strftime(?1, created_at) k, COUNT(*), 0 FROM sales
+         WHERE date(created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        |r, count, _| r.sales_count = count,
+    )?;
+    add(
+        "SELECT strftime(?1, s.created_at) k, SUM(i.line_total), SUM(i.line_cost)
+         FROM sale_items i JOIN sales s ON s.id = i.sale_id
+         WHERE date(s.created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        |r, revenue, cost| (r.revenue, r.cost) = (revenue, cost),
+    )?;
+    add(
+        "SELECT strftime(?1, s.created_at) k, SUM(i.quantity), 0
+         FROM sale_items i JOIN sales s ON s.id = i.sale_id
+         WHERE date(s.created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        |r, units, _| r.units_sold = units,
+    )?;
+    add(
+        "SELECT strftime(?1, created_at) k, SUM(amount), 0 FROM expenses
+         WHERE date(created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        |r, amount, _| r.expenses = amount,
+    )?;
+    add(
+        "SELECT strftime(?1, created_at) k, COALESCE(SUM(cost_total), 0), SUM(change_qty) FROM stock_movements
+         WHERE reason = 'purchase' AND date(created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        |r, cost, units| (r.purchases_cost, r.purchases_units) = (cost, units),
+    )?;
+    Ok(rows
+        .into_values()
+        .map(|r| PeriodRow {
+            profit: r.revenue - r.cost,
+            net_profit: r.revenue - r.cost - r.expenses,
+            ..r
+        })
+        .collect())
+}
+
+#[derive(Serialize)]
+pub struct PurchasedItemRow {
+    variant_id: i64,
+    name: String,
+    variant_label: String,
+    units: i64,
+    cost: i64,
+}
+
+/// What came in from suppliers in the period, per item.
+#[tauri::command]
+pub fn report_purchased_items(
+    state: State<AppState>,
+    from: String,
+    to: String,
+) -> AppResult<Vec<PurchasedItemRow>> {
+    state.admin()?;
+    let db = state.db.lock().unwrap();
+    query(
+        &db,
+        "SELECT v.id, p.name, v.label, SUM(m.change_qty), COALESCE(SUM(m.cost_total), 0)
+         FROM stock_movements m
+         JOIN product_variants v ON v.id = m.variant_id
+         JOIN products p ON p.id = m.product_id
+         WHERE m.reason = 'purchase' AND date(m.created_at) BETWEEN ?1 AND ?2
+         GROUP BY v.id ORDER BY SUM(m.cost_total) DESC",
+        [&from, &to],
+        |r| {
+            Ok(PurchasedItemRow {
+                variant_id: r.get(0)?,
+                name: r.get(1)?,
+                variant_label: r.get(2)?,
+                units: r.get(3)?,
+                cost: r.get(4)?,
             })
         },
     )
@@ -353,4 +490,51 @@ pub fn report_by_supplier(
             balance: r.get(6)?,
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn groups_sales_expenses_and_purchases_by_month() {
+        let path = std::env::temp_dir().join(format!("mobile-pos-per-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = crate::db::open(&path).unwrap();
+        db.execute_batch(
+            "INSERT INTO users (id, name, username, password_hash, role, created_at) VALUES (1, 'a', 'a', 'x', 'admin', '2026-01-01 00:00:00');
+             INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');
+             INSERT INTO products (id, name, category_id, created_at, updated_at) VALUES (1, 'p', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+             INSERT INTO product_variants (id, product_id, price, cost) VALUES (1, 1, 1000, 700);
+             INSERT INTO sales (id, user_id, created_at, total, cost_total, paid, change_due) VALUES
+                 (1, 1, '2026-03-02 10:00:00', 2000, 1400, 2000, 0),
+                 (2, 1, '2026-03-20 10:00:00', 1000, 700, 1000, 0),
+                 (3, 1, '2026-04-01 10:00:00', 1000, 700, 1000, 0);
+             INSERT INTO sale_items (sale_id, product_id, variant_id, product_name, quantity, unit_price, line_total, line_cost) VALUES
+                 (1, 1, 1, 'p', 2, 1000, 2000, 1400), (2, 1, 1, 'p', 1, 1000, 1000, 700), (3, 1, 1, 'p', 1, 1000, 1000, 700);
+             INSERT INTO expenses (amount, reason, user_id, created_at) VALUES (250, 'r', 1, '2026-03-05 09:00:00');
+             INSERT INTO stock_movements (product_id, variant_id, change_qty, reason, cost_total, user_id, created_at)
+                 VALUES (1, 1, 10, 'purchase', 7000, 1, '2026-02-27 09:00:00');",
+        )
+        .unwrap();
+        let rows = periods(&db, "2026-01-01", "2026-12-31", "month").unwrap();
+        let months: Vec<_> = rows.iter().map(|r| r.period.as_str()).collect();
+        assert_eq!(months, ["2026-02", "2026-03", "2026-04"]);
+        let march = &rows[1];
+        assert_eq!(
+            (march.sales_count, march.units_sold, march.revenue),
+            (2, 3, 3000)
+        );
+        assert_eq!(
+            (march.profit, march.expenses, march.net_profit),
+            (900, 250, 650)
+        );
+        assert_eq!(
+            (rows[0].purchases_units, rows[0].purchases_cost),
+            (10, 7000)
+        );
+        assert!(periods(&db, "2026-01-01", "2026-12-31", "week").is_err());
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
 }

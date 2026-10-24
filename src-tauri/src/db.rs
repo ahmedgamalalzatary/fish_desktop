@@ -146,20 +146,79 @@ CREATE INDEX idx_purchases_supplier ON purchases(supplier_id);
 CREATE INDEX idx_payments_supplier ON supplier_payments(supplier_id);
 CREATE INDEX idx_movements_purchase ON stock_movements(purchase_id);
 "#,
+    r#"
+-- Money taken out of the shop for running costs (rent, electricity, a delivery). `user_id` is who recorded it.
+CREATE TABLE expenses (
+    id         INTEGER PRIMARY KEY,
+    amount     INTEGER NOT NULL CHECK (amount > 0),
+    reason     TEXT NOT NULL CHECK (trim(reason) != ''),
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_expenses_created ON expenses(created_at);
+
+-- A sale can be paid with several methods. Each amount is what that method covered, with cash change
+-- already taken off, so the amounts of a sale always add up to its total.
+-- `sales.paid` stays what the customer handed over in total, so the receipt can show the change.
+CREATE TABLE sales_new (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    total      INTEGER NOT NULL,
+    cost_total INTEGER NOT NULL,
+    paid       INTEGER NOT NULL,
+    change_due INTEGER NOT NULL
+);
+INSERT INTO sales_new (id, user_id, created_at, total, cost_total, paid, change_due)
+    SELECT id, user_id, created_at, total, cost_total, paid, change_due FROM sales;
+
+CREATE TABLE sale_payments (
+    id      INTEGER PRIMARY KEY,
+    sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+    method  TEXT NOT NULL CHECK (method IN ('cash', 'card', 'wallet')),
+    amount  INTEGER NOT NULL CHECK (amount > 0)
+);
+INSERT INTO sale_payments (sale_id, method, amount) SELECT id, payment_method, total FROM sales;
+
+DROP TABLE sales;
+ALTER TABLE sales_new RENAME TO sales;
+
+CREATE INDEX idx_sales_created ON sales(created_at);
+CREATE INDEX idx_sale_payments_sale ON sale_payments(sale_id);
+"#,
 ];
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     let mut conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+    conn.execute_batch("PRAGMA journal_mode = WAL;")?;
     migrate(&mut conn)?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     Ok(conn)
 }
 
+/// Foreign keys are off while migrating, so a migration can rebuild a table other tables point at
+/// (with them on, dropping the old table would cascade-delete its children). Each migration is
+/// checked for broken references before it commits instead.
 fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
     let version: usize = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(version) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
+        let broken: i64 =
+            tx.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| {
+                r.get(0)
+            })?;
+        if broken > 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY),
+                Some(format!(
+                    "migration {} left {broken} broken references",
+                    i + 1
+                )),
+            ));
+        }
         tx.pragma_update(None, "user_version", i + 1)?;
         tx.commit()?;
     }
@@ -192,6 +251,47 @@ mod tests {
             )
             .unwrap();
         assert_eq!(currency, "ج.م");
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Sales recorded before split payments keep their items and get one payment row each.
+    #[test]
+    fn moves_old_sale_payment_methods_into_payment_rows() {
+        let path = std::env::temp_dir().join(format!("mobile-pos-mig-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut conn = Connection::open(&path).unwrap();
+        for sql in &MIGRATIONS[..2] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        conn.execute_batch(
+            "INSERT INTO users (id, name, username, password_hash, role, created_at) VALUES (1, 'a', 'a', 'x', 'admin', '2026-01-01 00:00:00');
+             INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');
+             INSERT INTO products (id, name, category_id, created_at, updated_at) VALUES (1, 'p', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+             INSERT INTO product_variants (id, product_id, price) VALUES (1, 1, 500);
+             INSERT INTO sales VALUES (7, 1, '2026-01-02 10:00:00', 500, 300, 'wallet', 500, 0);
+             INSERT INTO sale_items (sale_id, product_id, variant_id, product_name, quantity, unit_price, line_total, line_cost)
+                 VALUES (7, 1, 1, 'p', 1, 500, 500, 300);",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let (method, amount): (String, i64) = conn
+            .query_row(
+                "SELECT method, amount FROM sale_payments WHERE sale_id = 7",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((method.as_str(), amount), ("wallet", 500));
+        let items: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sale_items WHERE sale_id = 7",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(items, 1);
         drop(conn);
         let _ = std::fs::remove_file(&path);
     }

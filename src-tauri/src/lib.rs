@@ -52,6 +52,9 @@ pub fn run() {
             sales::create_sale,
             sales::get_sale,
             sales::list_sales,
+            expenses::create_expense,
+            expenses::list_expenses,
+            expenses::delete_expense,
             settings::get_settings,
             settings::update_settings,
             settings::backup_database,
@@ -63,6 +66,8 @@ pub fn run() {
             reports::report_by_cashier,
             reports::report_movements,
             reports::report_by_supplier,
+            reports::report_periods,
+            reports::report_purchased_items,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

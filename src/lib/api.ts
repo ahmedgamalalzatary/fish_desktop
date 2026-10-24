@@ -5,15 +5,19 @@ import type {
   Category,
   CategoryReportRow,
   DailyRow,
+  Expense,
   MovementReason,
   MovementRow,
-  PaymentMethod,
+  PaymentInput,
+  PeriodGroup,
+  PeriodRow,
   Product,
   ProductInput,
   ProductReportRow,
   Purchase,
   PurchaseInput,
   PurchaseSummary,
+  PurchasedItemRow,
   ReportSummary,
   Sale,
   SaleSummary,
@@ -84,11 +88,16 @@ export const api = {
   getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
-  createSale: (items: CartItemInput[], paymentMethod: PaymentMethod, paid: number) =>
-    call<Sale>("create_sale", { items, paymentMethod, paid }),
+  createSale: (items: CartItemInput[], payments: PaymentInput[]) =>
+    call<Sale>("create_sale", { items, payments }),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),
+
+  createExpense: (amount: number, reason: string) => call<number>("create_expense", { amount, reason }),
+  listExpenses: (range: Range, userId: number | null = null) =>
+    call<Expense[]>("list_expenses", { ...range, userId }),
+  deleteExpense: (id: number) => call<void>("delete_expense", { id }),
 
   getSettings: () => call<Settings>("get_settings"),
   updateSettings: (values: Partial<Settings>) => call<void>("update_settings", { values }),
@@ -102,4 +111,6 @@ export const api = {
   reportMovements: (r: Range, reason: MovementReason | null = null) =>
     call<MovementRow[]>("report_movements", { ...r, reason }),
   reportBySupplier: (r: Range) => call<SupplierReportRow[]>("report_by_supplier", r),
+  reportPeriods: (r: Range, group: PeriodGroup) => call<PeriodRow[]>("report_periods", { ...r, group }),
+  reportPurchasedItems: (r: Range) => call<PurchasedItemRow[]>("report_purchased_items", r),
 };

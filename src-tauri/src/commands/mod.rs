@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod categories;
+pub mod expenses;
 pub mod pdf;
 pub mod products;
 pub mod purchases;

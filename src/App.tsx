@@ -6,6 +6,7 @@ import { SessionProvider } from "./lib/session";
 import type { SessionUser } from "./lib/types";
 import { CategoriesPage } from "./pages/CategoriesPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
+import { ExpensesPage } from "./pages/ExpensesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -40,6 +41,7 @@ export default function App() {
         <Shell>
           <Routes>
             <Route path="/pos" element={<PosPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             {isAdmin && (
               <>
                 <Route path="/reports" element={<ReportsPage />} />

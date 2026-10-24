@@ -76,6 +76,18 @@ export interface CartItemInput {
   quantity: number;
 }
 
+/** What the customer handed over with one method. Only cash may be more than due; the rest is change. */
+export interface PaymentInput {
+  method: PaymentMethod;
+  amount: number;
+}
+
+/** What one method covered of a sale, change already taken off. A sale's payments add up to its total. */
+export interface Payment {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export interface SaleItem {
   product_name: string;
   variant_label: string | null;
@@ -89,7 +101,8 @@ export interface Sale {
   created_at: string;
   cashier_name: string;
   total: number;
-  payment_method: PaymentMethod;
+  payments: Payment[];
+  /** Everything handed over, cash change included. */
   paid: number;
   change_due: number;
   items: SaleItem[];
@@ -100,7 +113,7 @@ export interface SaleSummary {
   created_at: string;
   cashier_name: string;
   total: number;
-  payment_method: PaymentMethod;
+  methods: PaymentMethod[];
   items_count: number;
 }
 
@@ -113,8 +126,12 @@ export interface ReportSummary {
   sales_count: number;
   revenue: number;
   cost: number;
+  /** Revenue minus the cost of the pieces sold. */
   profit: number;
   units_sold: number;
+  expenses: number;
+  /** Profit after expenses. */
+  net_profit: number;
   purchases_cost: number;
   purchases_units: number;
   supplier_paid: number;
@@ -126,6 +143,39 @@ export interface DailyRow {
   sales_count: number;
   revenue: number;
   profit: number;
+}
+
+export type PeriodGroup = "day" | "month" | "year";
+
+export interface PeriodRow {
+  /** YYYY-MM-DD, YYYY-MM or YYYY, depending on the grouping. */
+  period: string;
+  sales_count: number;
+  units_sold: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  expenses: number;
+  net_profit: number;
+  purchases_cost: number;
+  purchases_units: number;
+}
+
+export interface PurchasedItemRow {
+  variant_id: number;
+  name: string;
+  variant_label: string;
+  units: number;
+  cost: number;
+}
+
+export interface Expense {
+  id: number;
+  created_at: string;
+  amount: number;
+  reason: string;
+  user_id: number;
+  user_name: string;
 }
 
 export interface ProductReportRow {

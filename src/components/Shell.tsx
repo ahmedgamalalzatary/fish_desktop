@@ -7,6 +7,7 @@ import {
   ShoppingBasket,
   Truck,
   UsersRound,
+  WalletMinimal,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -14,8 +15,10 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useSession } from "../lib/session";
 
-const adminNav: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/pos", label: "البيع", icon: ShoppingBasket },
+/** `cashier` marks the pages a cashier can open too. */
+const nav: { to: string; label: string; icon: LucideIcon; cashier?: true }[] = [
+  { to: "/pos", label: "البيع", icon: ShoppingBasket, cashier: true },
+  { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
   { to: "/reports", label: "التقارير", icon: ChartColumnBig },
   { to: "/products", label: "المنتجات", icon: Package },
   { to: "/categories", label: "التصنيفات", icon: FolderTree },
@@ -27,7 +30,7 @@ const adminNav: { to: string; label: string; icon: LucideIcon }[] = [
 
 export function Shell({ children }: { children: ReactNode }) {
   const { user, settings, logout } = useSession();
-  const nav = user.role === "admin" ? adminNav : adminNav.slice(0, 1);
+  const items = user.role === "admin" ? nav : nav.filter((n) => n.cashier);
 
   return (
     <div className="flex h-full">
@@ -39,7 +42,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {settings.shop_name.split(" ").slice(0, 2).join(" ")}
         </div>
         <nav className="flex w-full flex-1 flex-col gap-1 px-2">
-          {nav.map(({ to, label, icon: Icon }) => (
+          {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

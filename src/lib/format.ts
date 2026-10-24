@@ -52,6 +52,9 @@ export const paymentLabels: Record<PaymentMethod, string> = {
   wallet: "محفظة إلكترونية",
 };
 
+/** ["cash", "card"] → "نقدي + بطاقة" */
+export const paymentNames = (methods: PaymentMethod[]) => methods.map((m) => paymentLabels[m]).join(" + ");
+
 export const movementLabels: Record<MovementReason, string> = {
   sale: "بيع",
   purchase: "استلام بضاعة",

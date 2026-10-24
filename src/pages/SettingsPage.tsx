@@ -14,7 +14,10 @@ const sampleSale: Sale = {
   created_at: "2026-01-01 12:30:00",
   cashier_name: "الكاشير",
   total: 3245000,
-  payment_method: "cash",
+  payments: [
+    { method: "cash", amount: 1245000 },
+    { method: "card", amount: 2000000 },
+  ],
   paid: 3250000,
   change_due: 5000,
   items: [
