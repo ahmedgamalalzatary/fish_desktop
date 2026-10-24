@@ -24,56 +24,38 @@ export interface UserInput {
   password: string | null;
 }
 
-export interface Category {
+/** One physical phone in stock. Stock is the number of these. */
+export interface Phone {
   id: number;
-  name: string;
-  parent_id: number | null;
-  product_count: number;
-}
-
-/** A sellable option of a product, e.g. "128GB أسود". Stock is counted per variant. */
-export interface Variant {
-  id: number;
-  /** Empty for a product sold without options. */
-  label: string;
+  product_id: number;
+  serial: string;
+  storage: string;
+  color: string;
+  /** Battery health in percent; null when not recorded (e.g. a new phone). */
+  battery: number | null;
   price: number;
+  /** Buy price; 0 for cashiers, who never see it. */
   cost: number;
-  stock: number;
-  low_stock: number;
+  /** Set when the phone came in on a supplier invoice, which then fixes its buy price. */
+  purchase_id: number | null;
+  created_at: string;
 }
 
+/** A phone model, e.g. "Samsung Galaxy S24 Ultra", with its phones in stock. */
 export interface Product {
   id: number;
   name: string;
-  category_id: number;
-  category_name: string;
-  parent_category_id: number | null;
-  parent_category_name: string | null;
   active: boolean;
-  /** Always at least one. */
-  variants: Variant[];
+  phones: Phone[];
 }
 
-export interface VariantInput {
-  /** null for a variant created in this request. */
-  id: number | null;
-  label: string;
+export interface PhoneInput {
+  serial: string;
+  storage: string;
+  color: string;
+  battery: number | null;
   price: number;
   cost: number;
-  low_stock: number;
-  /** Pieces on hand when the variant is created; ignored for existing ones. */
-  opening_stock: number;
-}
-
-export interface ProductInput {
-  name: string;
-  category_id: number;
-  variants: VariantInput[];
-}
-
-export interface CartItemInput {
-  variant_id: number;
-  quantity: number;
 }
 
 /** What the customer handed over with one method. Only cash may be more than due; the rest is change. */
@@ -88,12 +70,14 @@ export interface Payment {
   amount: number;
 }
 
+/** A phone as sold, copied at the time of sale. */
 export interface SaleItem {
   product_name: string;
-  variant_label: string | null;
-  quantity: number;
-  unit_price: number;
-  line_total: number;
+  serial: string;
+  storage: string;
+  color: string;
+  battery: number | null;
+  price: number;
 }
 
 export interface Sale {
@@ -118,7 +102,7 @@ export interface SaleSummary {
 }
 
 export type Settings = Record<
-  "shop_name" | "shop_phone" | "shop_address" | "receipt_footer" | "currency" | "allow_negative_stock",
+  "shop_name" | "shop_phone" | "shop_address" | "receipt_footer" | "currency",
   string
 >;
 
@@ -162,9 +146,8 @@ export interface PeriodRow {
 }
 
 export interface PurchasedItemRow {
-  variant_id: number;
+  product_id: number;
   name: string;
-  variant_label: string;
   units: number;
   cost: number;
 }
@@ -179,23 +162,11 @@ export interface Expense {
 }
 
 export interface ProductReportRow {
-  variant_id: number;
+  product_id: number;
   name: string;
-  variant_label: string;
-  category_name: string;
   units: number;
   revenue: number;
   cost: number;
-  profit: number;
-}
-
-export interface CategoryReportRow {
-  category_id: number;
-  name: string;
-  parent_id: number | null;
-  parent_name: string | null;
-  units: number;
-  revenue: number;
   profit: number;
 }
 
@@ -209,13 +180,15 @@ export interface CashierReportRow {
   last_sale: string;
 }
 
-export type MovementReason = "sale" | "purchase" | "adjustment";
+export type MovementReason = "added" | "purchase" | "sale" | "removed";
 
 export interface MovementRow {
   id: number;
   created_at: string;
   product_name: string;
-  variant_label: string;
+  serial: string;
+  storage: string;
+  color: string;
   change_qty: number;
   reason: MovementReason;
   cost_total: number | null;
@@ -249,11 +222,9 @@ export interface SupplierInput {
   active: boolean;
 }
 
-export interface PurchaseItemInput {
-  variant_id: number;
-  quantity: number;
-  /** Buy price of one piece. */
-  unit_cost: number;
+/** One phone on a supplier invoice; its `cost` is what the supplier charged. */
+export interface PurchaseItemInput extends PhoneInput {
+  product_id: number;
 }
 
 export interface PurchaseInput {
@@ -261,7 +232,6 @@ export interface PurchaseInput {
   invoice_no: string;
   note: string;
   paid: number;
-  update_cost: boolean;
   items: PurchaseItemInput[];
 }
 
@@ -271,8 +241,8 @@ export interface PurchaseSummary {
   supplier_id: number;
   supplier_name: string;
   invoice_no: string;
+  /** Phones on the invoice. */
   items_count: number;
-  pieces: number;
   total: number;
   /** Paid while receiving the invoice; later payments go to the supplier's account. */
   paid: number;
@@ -281,7 +251,15 @@ export interface PurchaseSummary {
 
 export interface Purchase extends PurchaseSummary {
   note: string;
-  items: { product_name: string; variant_label: string; quantity: number; cost_total: number }[];
+  items: {
+    product_name: string;
+    serial: string;
+    storage: string;
+    color: string;
+    battery: number | null;
+    cost: number;
+    status: "in_stock" | "sold" | "removed";
+  }[];
 }
 
 export interface StatementRow {

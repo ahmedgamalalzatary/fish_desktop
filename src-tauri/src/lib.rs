@@ -13,7 +13,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let conn = db::open(&dir.join("mobile-pos.db"))?;
+            let conn = db::open(&dir.join("phones.db"))?;
             app.manage(state::AppState::new(conn));
             Ok(())
         })
@@ -28,10 +28,6 @@ pub fn run() {
             users::create_user,
             users::update_user,
             users::delete_user,
-            categories::list_categories,
-            categories::create_category,
-            categories::update_category,
-            categories::delete_category,
             products::list_products,
             products::create_product,
             products::update_product,
@@ -48,7 +44,9 @@ pub fn run() {
             purchases::list_purchases,
             purchases::get_purchase,
             purchases::delete_purchase,
-            stock::adjust_stock,
+            phones::add_phones,
+            phones::update_phone,
+            phones::remove_phone,
             sales::create_sale,
             sales::get_sale,
             sales::list_sales,
@@ -62,7 +60,6 @@ pub fn run() {
             reports::report_summary,
             reports::report_daily,
             reports::report_by_product,
-            reports::report_by_category,
             reports::report_by_cashier,
             reports::report_movements,
             reports::report_by_supplier,

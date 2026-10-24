@@ -1,7 +1,8 @@
-import { Banknote, FileText, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Banknote, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type Column } from "../components/DataTable";
 import { ExportButtons } from "../components/ExportButtons";
+import { PhoneLines } from "../components/PhoneLines";
 import { ReportDocument } from "../components/ReportDocument";
 import {
   Badge,
@@ -24,16 +25,16 @@ import {
   formatAmount,
   formatDateTime,
   formatMoney,
+  formatPhones,
   isoDate,
-  itemName,
-  parseCount,
   parseMoney,
+  phoneDetails,
 } from "../lib/format";
+import { isBlank, newDraft, readDraft, repeatedSerials, type PhoneDraft } from "../lib/phones";
 import { purchaseColumns } from "../lib/purchases";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
-import { stockRows, type StockRow } from "../lib/stock";
-import type { Purchase, StatementRow, Supplier } from "../lib/types";
+import type { Purchase, PurchaseItemInput, StatementRow, Supplier } from "../lib/types";
 import { useResource } from "../lib/useResource";
 
 type Tab = "invoices" | "suppliers";
@@ -351,33 +352,8 @@ function Balance({ amount }: { amount: number }) {
 
 // ---- Purchase invoice form ----
 
-interface Line {
-  key: number;
-  variantId: string;
-  qty: string;
-  unitCost: string;
-}
-
-let lineKey = 0;
-const newLine = (variantId = ""): Line => ({
-  key: ++lineKey,
-  variantId,
-  qty: "1",
-  unitCost: "",
-});
-
-const costText = (cents: number) => (cents ? String(cents / 100) : "");
-
-/** Records goods received from a supplier. `variantId` pre-fills the first line (from the stock page). */
-export function PurchaseFormModal({
-  variantId,
-  onClose,
-  onSaved,
-}: {
-  variantId?: number;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+/** Records phones received from a supplier: one line per phone, each with its serial and buy price. */
+export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { settings } = useSession();
   const toast = useToast();
   const [products] = useResource(useCallback(() => api.listProducts(), []));
@@ -387,48 +363,29 @@ export function PurchaseFormModal({
   const [newSupplier, setNewSupplier] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [note, setNote] = useState("");
-  const [lines, setLines] = useState<Line[]>(() => [newLine(variantId ? String(variantId) : "")]);
+  const [drafts, setDrafts] = useState<PhoneDraft[]>(() => [newDraft()]);
   const [payInFull, setPayInFull] = useState(true);
   const [paidText, setPaidText] = useState("");
-  const [updateCost, setUpdateCost] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const byId = useMemo(
-    () => new Map(stockRows(products ?? []).map((r) => [String(r.variant.id), r])),
-    [products],
-  );
-  const groups = useMemo(() => {
-    const map = new Map<string, StockRow[]>();
-    for (const r of stockRows(products ?? [])) {
-      const p = r.product;
-      const group = p.parent_category_name
-        ? `${p.parent_category_name} / ${p.category_name}`
-        : p.category_name;
-      map.set(group, [...(map.get(group) ?? []), r]);
-    }
-    return [...map.entries()];
-  }, [products]);
   const activeSuppliers = (suppliers ?? []).filter((s) => s.active);
-
-  // An empty buy price means the item's current one, which the field shows as its placeholder.
-  const parsed = lines.map((l) => ({
-    qty: parseCount(l.qty),
-    unitCost: l.unitCost ? parseMoney(l.unitCost) : (byId.get(l.variantId)?.variant.cost ?? 0),
-  }));
-  const total = parsed.reduce((s, l) => s + (l.qty ?? 0) * (l.unitCost ?? 0), 0);
+  const filled = drafts.filter((d) => !isBlank(d));
+  const total = filled.reduce((s, d) => s + (parseMoney(d.cost) ?? 0), 0);
   const paid = payInFull ? total : parseMoney(paidText || "0");
   const remaining = paid === null ? null : total - paid;
   const supplier = activeSuppliers.find((s) => String(s.id) === supplierId);
 
-  const setLine = (key: number, patch: Partial<Line>) =>
-    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-
   const save = async () => {
     if (!supplierId || (supplierId === "new" && !newSupplier.trim())) return toast("اختر المورد", "error");
-    const filled = lines.map((l, i) => ({ l, ...parsed[i] })).filter(({ l }) => l.variantId || l.unitCost);
-    if (filled.length === 0) return toast("أضف صنفاً واحداً على الأقل", "error");
-    if (filled.some(({ l, qty, unitCost }) => !l.variantId || !qty || unitCost === null))
-      return toast("أكمل الصنف والعدد وسعر الشراء لكل سطر", "error");
+    if (filled.length === 0) return toast("أضف جهازاً واحداً على الأقل", "error");
+    if (repeatedSerials(filled).size > 0) return toast("رقم تسلسلي مكرر في الفاتورة", "error");
+    const items: PurchaseItemInput[] = [];
+    for (const d of filled) {
+      if (!d.productId) return toast(`اختر الموديل للجهاز ${d.serial || "الفارغ"}`, "error");
+      const read = readDraft(d);
+      if ("error" in read) return toast(read.error, "error");
+      items.push({ product_id: Number(d.productId), ...read.input });
+    }
     if (paid === null || paid > total)
       return toast("المبلغ المدفوع يجب ألا يزيد عن إجمالي الفاتورة", "error");
 
@@ -453,14 +410,9 @@ export function PurchaseFormModal({
         invoice_no: invoiceNo,
         note,
         paid,
-        update_cost: updateCost,
-        items: filled.map(({ l, qty, unitCost }) => ({
-          variant_id: Number(l.variantId),
-          quantity: qty!,
-          unit_cost: unitCost!,
-        })),
+        items,
       });
-      toast(`حُفظت فاتورة الشراء #${purchaseId} وأُضيفت الكميات إلى المخزون`);
+      toast(`حُفظت فاتورة الشراء #${purchaseId} وأُضيف ${formatPhones(items.length)} إلى المخزون`);
       onSaved();
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -472,7 +424,7 @@ export function PurchaseFormModal({
     <Modal
       title="فاتورة شراء"
       onClose={onClose}
-      width="max-w-4xl"
+      width="max-w-6xl"
       footer={
         <>
           <Button tone="outline" onClick={onClose}>
@@ -531,87 +483,11 @@ export function PurchaseFormModal({
           </Field>
         </div>
 
-        <div className="rounded-xl border border-line bg-white">
-          <div className="grid grid-cols-[1fr_6rem_9rem_8rem_2.25rem] gap-3 border-b border-line px-4 py-2.5 text-sm font-medium text-dim">
-            <span>الصنف</span>
-            <span>العدد</span>
-            <span>سعر شراء القطعة</span>
-            <span className="text-end">الإجمالي</span>
-            <span />
-          </div>
-          {lines.map((l, i) => {
-            const { qty, unitCost } = parsed[i];
-            const row = byId.get(l.variantId);
-            return (
-              <div
-                key={l.key}
-                className="grid grid-cols-[1fr_6rem_9rem_8rem_2.25rem] items-center gap-3 border-b border-line/70 px-4 py-2.5"
-              >
-                <Select
-                  value={l.variantId}
-                  onChange={(e) => setLine(l.key, { variantId: e.target.value })}
-                  aria-label="الصنف"
-                >
-                  <option value="" disabled>
-                    اختر الصنف
-                  </option>
-                  {groups.map(([group, items]) => (
-                    <optgroup key={group} label={group}>
-                      {items.map((r) => (
-                        <option key={r.variant.id} value={r.variant.id}>
-                          {itemName(r.product.name, r.variant.label)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </Select>
-                <Input
-                  dir="ltr"
-                  inputMode="numeric"
-                  value={l.qty}
-                  onChange={(e) => setLine(l.key, { qty: e.target.value })}
-                  aria-label="العدد"
-                  className={l.qty && !qty ? "border-alert" : undefined}
-                />
-                <Input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={l.unitCost}
-                  onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
-                  placeholder={row ? costText(row.variant.cost) : undefined}
-                  aria-label="سعر شراء القطعة"
-                  className={l.unitCost && unitCost === null ? "border-alert" : undefined}
-                />
-                <div className="text-end text-sm leading-5">
-                  <div className="font-medium">
-                    {qty && unitCost !== null ? formatAmount(qty * unitCost) : "—"}
-                  </div>
-                  {row && (
-                    <div className="text-xs text-dim" title="سعر الشراء المسجّل حالياً">
-                      الحالي {formatAmount(row.variant.cost)}
-                    </div>
-                  )}
-                </div>
-                <Button
-                  tone="ghost"
-                  size="icon"
-                  onClick={() =>
-                    setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : [newLine()]))
-                  }
-                  aria-label="حذف الصنف"
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-            );
-          })}
-          <div className="px-4 py-2.5">
-            <Button tone="ghost" size="sm" onClick={() => setLines((ls) => [...ls, newLine()])}>
-              <Plus className="size-4" />
-              إضافة صنف
-            </Button>
-          </div>
-        </div>
+        {products && products.length === 0 ? (
+          <Empty title="لا توجد موديلات بعد">أضف الموديلات من صفحة المنتجات، ثم سجّل أجهزتها هنا.</Empty>
+        ) : (
+          <PhoneLines drafts={drafts} onChange={setDrafts} products={products ?? []} />
+        )}
 
         <div className="grid grid-cols-[1fr_17rem] items-start gap-6">
           <div className="flex flex-col gap-4">
@@ -647,18 +523,17 @@ export function PurchaseFormModal({
                 </p>
               )}
             </div>
-            <Toggle
-              checked={updateCost}
-              onChange={setUpdateCost}
-              label="تحديث سعر الشراء للأصناف"
-              description="يصبح سعر شراء كل صنف هو سعره في هذه الفاتورة، فيُحسب الربح بالسعر الجديد."
-            />
             <Field label="ملاحظة">
               {(id) => <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} />}
             </Field>
           </div>
           <div className="flex flex-col gap-2">
-            <Screen label="إجمالي الفاتورة" value={formatAmount(total)} unit={settings.currency} size="md" />
+            <Screen
+              label={`إجمالي الفاتورة · ${formatPhones(filled.length)}`}
+              value={formatAmount(total)}
+              unit={settings.currency}
+              size="md"
+            />
             <div className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-2.5 text-sm">
               <span className="text-dim">يُضاف لحساب المورد</span>
               <span
@@ -718,24 +593,18 @@ function purchaseDocument(p: Purchase, settings: ReturnType<typeof useSession>["
   );
 }
 
+const statusLabels = { in_stock: "في المخزون", sold: "بِيع", removed: "خرج من المخزون" };
+
 function itemColumns(p: Purchase): Column<Purchase["items"][number]>[] {
   return [
-    { header: "الصنف", cell: (i) => itemName(i.product_name, i.variant_label) },
+    { header: "الموديل", cell: (i) => i.product_name },
+    { header: "الرقم التسلسلي", cell: (i) => <span dir="ltr">{i.serial}</span> },
+    { header: "التفاصيل", cell: (i) => phoneDetails(i) || "—" },
+    { header: "الحالة", cell: (i) => statusLabels[i.status] },
     {
-      header: "العدد",
+      header: "سعر الشراء",
       numeric: true,
-      cell: (i) => i.quantity,
-      total: p.pieces,
-    },
-    {
-      header: "سعر القطعة",
-      numeric: true,
-      cell: (i) => formatAmount(Math.round(i.cost_total / i.quantity)),
-    },
-    {
-      header: "الإجمالي",
-      numeric: true,
-      cell: (i) => formatAmount(i.cost_total),
+      cell: (i) => formatAmount(i.cost),
       total: formatAmount(p.total),
     },
   ];
@@ -760,7 +629,7 @@ export function PurchaseDetailModal({
     return (
       <ConfirmDialog
         title="حذف فاتورة الشراء"
-        message={`ستُخصم كميات الفاتورة #${purchase.id} من المخزون ويُلغى ما دُفع عند استلامها. استخدم هذا فقط إن سُجّلت الفاتورة بالخطأ.`}
+        message={`ستُحذف أجهزة الفاتورة #${purchase.id} من المخزون ويُلغى ما دُفع عند استلامها. استخدم هذا فقط إن سُجّلت الفاتورة بالخطأ.`}
         confirmLabel="حذف الفاتورة"
         onCancel={() => setConfirming(false)}
         onConfirm={async () => {
@@ -810,11 +679,7 @@ export function PurchaseDetailModal({
       </dl>
       {purchase.note && <p className="mb-4 text-sm text-ink-2">{purchase.note}</p>}
       <Panel className="overflow-hidden">
-        <DataTable
-          columns={itemColumns(purchase)}
-          rows={purchase.items}
-          rowKey={(i) => itemName(i.product_name, i.variant_label)}
-        />
+        <DataTable columns={itemColumns(purchase)} rows={purchase.items} rowKey={(i) => i.serial} />
       </Panel>
     </Modal>
   );

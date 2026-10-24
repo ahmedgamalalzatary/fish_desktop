@@ -9,17 +9,16 @@ import { cx } from "../lib/cx";
 import { section, type DocumentSection } from "../lib/document";
 import { expenseByUserColumns, expenseColumns, expensesByUser } from "../lib/expenses";
 import { purchaseColumns, supplierReportColumns } from "../lib/purchases";
-import { stockColumns, stockRows, stockValue, type StockRow } from "../lib/stock";
+import { stockColumns, stockRows, type StockRow } from "../lib/stock";
 import { useResource } from "../lib/useResource";
-import { Empty, PageHeader, Panel, Screen, Segmented, Select, Toggle } from "../components/ui";
+import { Empty, PageHeader, Panel, Screen, Segmented, Select } from "../components/ui";
 import { api } from "../lib/api";
 import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatPieces,
+  formatPhones,
   isoDate,
-  itemName,
   movementLabels,
   paymentLabels,
   paymentNames,
@@ -28,7 +27,6 @@ import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import type {
   CashierReportRow,
-  CategoryReportRow,
   DailyRow,
   Expense,
   MovementReason,
@@ -51,7 +49,6 @@ type Tab =
   | "profit"
   | "sales"
   | "products"
-  | "categories"
   | "cashiers"
   | "purchases"
   | "suppliers"
@@ -64,7 +61,6 @@ const tabs: { value: Tab; label: string }[] = [
   { value: "profit", label: "الأرباح" },
   { value: "sales", label: "الفواتير" },
   { value: "products", label: "المنتجات" },
-  { value: "categories", label: "التصنيفات" },
   { value: "cashiers", label: "الموظفون" },
   { value: "purchases", label: "المشتريات" },
   { value: "suppliers", label: "الموردون" },
@@ -90,7 +86,6 @@ interface ReportData {
   daily: DailyRow[];
   sales: SaleSummary[];
   products: ProductReportRow[];
-  categories: CategoryReportRow[];
   cashiers: CashierReportRow[];
   purchases: PurchaseSummary[];
   suppliers: SupplierReportRow[];
@@ -110,7 +105,6 @@ export function ReportsPage() {
   const [preset, setPreset] = useState<Preset>("today");
   const [range, setRange] = useState(presetRange("today"));
   const [tab, setTab] = useState<Tab>("summary");
-  const [rollUp, setRollUp] = useState(false);
   const [group, setGroup] = useState<PeriodGroup>("day");
   const [purchasesBy, setPurchasesBy] = useState<"invoice" | "item">("invoice");
   const [reason, setReason] = useState<MovementReason | "">("");
@@ -124,7 +118,6 @@ export function ReportsPage() {
       daily,
       sales,
       products,
-      categories,
       cashiers,
       purchases,
       suppliers,
@@ -137,7 +130,6 @@ export function ReportsPage() {
       api.reportDaily(range),
       api.listSales(range),
       api.reportByProduct(range),
-      api.reportByCategory(range),
       api.reportByCashier(range),
       api.listPurchases(range),
       api.reportBySupplier(range),
@@ -151,7 +143,6 @@ export function ReportsPage() {
       daily,
       sales,
       products,
-      categories,
       cashiers,
       purchases,
       suppliers,
@@ -166,32 +157,6 @@ export function ReportsPage() {
   const [periods] = useResource(useCallback(() => api.reportPeriods(range, group), [range, group]));
 
   // ---- Column definitions, shared by the screen and the printed documents ----
-
-  const categoryRows = useMemo(() => {
-    if (!data) return [];
-    if (!rollUp) return data.categories;
-    const merged = new Map<number, CategoryReportRow>();
-    for (const r of data.categories) {
-      const id = r.parent_id ?? r.category_id;
-      const name = r.parent_name ?? r.name;
-      const m = merged.get(id) ?? {
-        category_id: id,
-        name,
-        parent_id: null,
-        parent_name: null,
-        units: 0,
-        revenue: 0,
-        profit: 0,
-      };
-      merged.set(id, {
-        ...m,
-        units: m.units + r.units,
-        revenue: m.revenue + r.revenue,
-        profit: m.profit + r.profit,
-      });
-    }
-    return [...merged.values()].sort((a, b) => b.revenue - a.revenue);
-  }, [data, rollUp]);
 
   const movements = useMemo(
     () => (data ? data.movements.filter((m) => !reason || m.reason === reason) : []),
@@ -252,10 +217,9 @@ export function ReportsPage() {
   ];
 
   const productColumns: Column<ProductReportRow>[] = [
-    { header: "الصنف", cell: (r) => itemName(r.name, r.variant_label) },
-    { header: "التصنيف", cell: (r) => r.category_name },
+    { header: "الموديل", cell: (r) => r.name },
     {
-      header: "القطع المباعة",
+      header: "الأجهزة المباعة",
       numeric: true,
       cell: (r) => r.units,
       total: sum(data.products, (r) => r.units),
@@ -282,36 +246,6 @@ export function ReportsPage() {
       header: "الهامش",
       numeric: true,
       cell: (r) => margin(r.profit, r.revenue),
-    },
-  ];
-
-  const categoryColumns: Column<CategoryReportRow>[] = [
-    {
-      header: "التصنيف",
-      cell: (r) => (r.parent_name ? `${r.parent_name} / ${r.name}` : r.name),
-    },
-    {
-      header: "القطع المباعة",
-      numeric: true,
-      cell: (r) => r.units,
-      total: sum(categoryRows, (r) => r.units),
-    },
-    {
-      header: "المبيعات",
-      numeric: true,
-      cell: (r) => formatAmount(r.revenue),
-      total: formatAmount(s.revenue),
-    },
-    {
-      header: "الربح",
-      numeric: true,
-      cell: (r) => formatAmount(r.profit),
-      total: formatAmount(s.profit),
-    },
-    {
-      header: "من إجمالي المبيعات",
-      numeric: true,
-      cell: (r) => margin(r.revenue, s.revenue),
     },
   ];
 
@@ -350,17 +284,15 @@ export function ReportsPage() {
     },
   ];
 
-  const stockValueTotal = sum(data.stock, (r) => stockValue(r.variant));
-  const stockCols = stockColumns(currency).map((c, i, all) =>
-    i === all.length - 1 ? { ...c, total: formatAmount(stockValueTotal) } : c,
-  );
+  const stockCols = stockColumns(data.stock);
 
   const movementColumns: Column<MovementRow>[] = [
     {
       header: "التاريخ",
       cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span>,
     },
-    { header: "الصنف", cell: (r) => itemName(r.product_name, r.variant_label) },
+    { header: "الموديل", cell: (r) => r.product_name },
+    { header: "الرقم التسلسلي", cell: (r) => <span dir="ltr">{r.serial}</span> },
     { header: "الحركة", cell: (r) => movementLabels[r.reason] },
     {
       header: "الكمية",
@@ -399,15 +331,15 @@ export function ReportsPage() {
     { label: "المشتريات", value: formatMoney(s.purchases_cost, currency) },
     { label: "المصروفات", value: formatMoney(s.expenses, currency) },
     { label: "إجمالي الربح", value: formatMoney(s.profit, currency) },
-    { label: "القطع المباعة", value: formatPieces(s.units_sold) },
+    { label: "الأجهزة المباعة", value: formatPhones(s.units_sold) },
     { label: "عدد الفواتير", value: s.sales_count },
     {
       label: "متوسط الفاتورة",
       value: formatMoney(s.sales_count ? Math.round(s.revenue / s.sales_count) : 0, currency),
     },
-    { label: "تكلفة القطع المباعة", value: formatMoney(s.cost, currency) },
+    { label: "تكلفة الأجهزة المباعة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
-    { label: "القطع المشتراة", value: formatPieces(s.purchases_units) },
+    { label: "الأجهزة المشتراة", value: formatPhones(s.purchases_units) },
     { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
     {
       label: "مستحق للموردين حالياً",
@@ -426,15 +358,15 @@ export function ReportsPage() {
   const periodRows = periods ?? [];
 
   const purchasedItemColumns: Column<PurchasedItemRow>[] = [
-    { header: "الصنف", cell: (r) => itemName(r.name, r.variant_label) },
+    { header: "الموديل", cell: (r) => r.name },
     {
-      header: "القطع المشتراة",
+      header: "الأجهزة المشتراة",
       numeric: true,
       cell: (r) => r.units,
       total: sum(data.purchasedItems, (r) => r.units),
     },
     {
-      header: "متوسط سعر القطعة",
+      header: "متوسط سعر الجهاز",
       numeric: true,
       cell: (r) => (r.units ? formatAmount(Math.round(r.cost / r.units)) : "—"),
     },
@@ -464,7 +396,7 @@ export function ReportsPage() {
       total: formatAmount(s.revenue),
     },
     {
-      header: "القطع المباعة",
+      header: "الأجهزة المباعة",
       numeric: true,
       cell: (r) => r.units_sold,
       total: s.units_sold,
@@ -507,7 +439,6 @@ export function ReportsPage() {
     profit: [section({ title: `الأرباح · ${groupLabels[group]}`, columns: periodColumns, rows: periodRows })],
     sales: [section({ columns: salesColumns, rows: data.sales })],
     products: [section({ columns: productColumns, rows: data.products })],
-    categories: [section({ columns: categoryColumns, rows: categoryRows })],
     cashiers: [section({ columns: cashierColumns, rows: data.cashiers })],
     purchases: [
       section({ title: "حسب الصنف", columns: purchasedItemColumns, rows: data.purchasedItems }),
@@ -550,11 +481,6 @@ export function ReportsPage() {
           title: "المنتجات",
           columns: productColumns,
           rows: data.products,
-        }),
-        section({
-          title: "التصنيفات",
-          columns: categoryColumns,
-          rows: categoryRows,
         }),
         section({
           title: "الموظفون",
@@ -667,7 +593,7 @@ export function ReportsPage() {
               <h2 className="mb-4 font-semibold">البضاعة المشتراة</h2>
               <dl className="flex flex-col gap-3 text-sm">
                 <Line label="المشتريات" value={formatMoney(s.purchases_cost, currency)} strong />
-                <Line label="القطع المستلمة" value={formatPieces(s.purchases_units)} />
+                <Line label="الأجهزة المستلمة" value={formatPhones(s.purchases_units)} />
                 <Line label="مدفوع للموردين في الفترة" value={formatMoney(s.supplier_paid, currency)} />
                 <Line
                   label="مستحق للموردين حالياً"
@@ -678,8 +604,8 @@ export function ReportsPage() {
                 />
               </dl>
               <p className="mt-4 text-xs leading-5 text-dim">
-                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة القطع
-                المباعة.
+                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة
+                الأجهزة المباعة.
               </p>
             </Panel>
           </div>
@@ -718,21 +644,9 @@ export function ReportsPage() {
       {tab === "products" && (
         <TabTable empty="لم يُبع أي منتج في هذه الفترة">
           {data.products.length > 0 && (
-            <DataTable columns={productColumns} rows={data.products} rowKey={(r) => r.variant_id} />
+            <DataTable columns={productColumns} rows={data.products} rowKey={(r) => r.product_id} />
           )}
         </TabTable>
-      )}
-      {tab === "categories" && (
-        <>
-          <div className="mb-3">
-            <Toggle checked={rollUp} onChange={setRollUp} label="دمج التصنيفات الفرعية في التصنيف الرئيسي" />
-          </div>
-          <TabTable empty="لا توجد مبيعات في هذه الفترة">
-            {categoryRows.length > 0 && (
-              <DataTable columns={categoryColumns} rows={categoryRows} rowKey={(r) => r.category_id} />
-            )}
-          </TabTable>
-        </>
       )}
       {tab === "cashiers" && (
         <TabTable empty="لا توجد مبيعات في هذه الفترة">
@@ -767,7 +681,7 @@ export function ReportsPage() {
                   <DataTable
                     columns={purchasedItemColumns}
                     rows={data.purchasedItems}
-                    rowKey={(r) => r.variant_id}
+                    rowKey={(r) => r.product_id}
                   />
                 )}
           </TabTable>
@@ -807,7 +721,7 @@ export function ReportsPage() {
           <p className="mb-3 text-sm text-dim">المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.</p>
           <TabTable empty="لا توجد منتجات">
             {data.stock.length > 0 && (
-              <DataTable columns={stockCols} rows={data.stock} rowKey={(r) => r.variant.id} />
+              <DataTable columns={stockCols} rows={data.stock} rowKey={(r) => r.phone.id} />
             )}
           </TabTable>
         </>
@@ -865,11 +779,11 @@ function ProfitStatement({ summary: s, currency }: { summary: ReportSummary; cur
   const steps: { label: string; note?: string; value: number; kind: "plus" | "minus" | "result" }[] = [
     {
       label: "المبيعات",
-      note: `${s.sales_count} فاتورة · ${formatPieces(s.units_sold)}`,
+      note: `${s.sales_count} فاتورة · ${formatPhones(s.units_sold)}`,
       value: s.revenue,
       kind: "plus",
     },
-    { label: "تكلفة القطع المباعة", value: s.cost, kind: "minus" },
+    { label: "تكلفة الأجهزة المباعة", value: s.cost, kind: "minus" },
     { label: "إجمالي الربح", note: `هامش ${margin(s.profit, s.revenue)}`, value: s.profit, kind: "result" },
     { label: "المصروفات", value: s.expenses, kind: "minus" },
   ];

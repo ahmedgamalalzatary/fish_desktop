@@ -9,7 +9,6 @@ const KEYS: &[&str] = &[
     "shop_address",
     "receipt_footer",
     "currency",
-    "allow_negative_stock",
 ];
 
 #[tauri::command]

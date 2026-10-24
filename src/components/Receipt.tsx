@@ -1,4 +1,4 @@
-import { formatAmount, formatDateTime, paymentLabels } from "../lib/format";
+import { formatAmount, formatDateTime, paymentLabels, phoneDetails } from "../lib/format";
 import type { Sale, Settings } from "../lib/types";
 
 /** Receipt layout, sized for 80mm thermal paper and also used for the on-screen preview. */
@@ -23,14 +23,12 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
             <tr key={i} className="align-top">
               <td className="py-1">
                 <div className="font-semibold">{item.product_name}</div>
-                <div className="text-[11px]">
-                  {item.variant_label && `${item.variant_label} · `}
-                  {item.quantity} × {formatAmount(item.unit_price)}
+                {phoneDetails(item) && <div className="text-[11px]">{phoneDetails(item)}</div>}
+                <div className="text-[11px]" dir="ltr">
+                  S/N {item.serial}
                 </div>
               </td>
-              <td className="py-1 text-end font-semibold whitespace-nowrap">
-                {formatAmount(item.line_total)}
-              </td>
+              <td className="py-1 text-end font-semibold whitespace-nowrap">{formatAmount(item.price)}</td>
             </tr>
           ))}
         </tbody>

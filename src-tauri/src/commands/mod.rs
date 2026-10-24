@@ -1,12 +1,11 @@
 pub mod auth;
-pub mod categories;
 pub mod expenses;
 pub mod pdf;
+pub mod phones;
 pub mod products;
 pub mod purchases;
 pub mod reports;
 pub mod sales;
 pub mod settings;
-pub mod stock;
 pub mod suppliers;
 pub mod users;

@@ -11,12 +11,11 @@ export function purchaseColumns(rows: PurchaseSummary[]): Column<PurchaseSummary
     { header: "التاريخ", cell: (r) => formatDateTime(r.created_at) },
     { header: "المورد", cell: (r) => r.supplier_name },
     { header: "فاتورة المورد", cell: (r) => r.invoice_no || "—" },
-    { header: "الأصناف", numeric: true, cell: (r) => r.items_count },
     {
-      header: "القطع",
+      header: "الأجهزة",
       numeric: true,
-      cell: (r) => r.pieces,
-      total: sum(rows, (r) => r.pieces),
+      cell: (r) => r.items_count,
+      total: sum(rows, (r) => r.items_count),
     },
     {
       header: "الإجمالي",
@@ -39,7 +38,7 @@ export function supplierReportColumns(rows: SupplierReportRow[]): Column<Supplie
     { header: "المورد", cell: (r) => r.name },
     { header: "الفواتير", numeric: true, cell: (r) => r.purchases_count },
     {
-      header: "القطع المستلمة",
+      header: "الأجهزة المستلمة",
       numeric: true,
       cell: (r) => r.pieces,
       total: sum(rows, (r) => r.pieces),

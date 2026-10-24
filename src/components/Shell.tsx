@@ -1,6 +1,5 @@
 import {
   ChartColumnBig,
-  FolderTree,
   LogOut,
   Package,
   Settings,
@@ -21,7 +20,6 @@ const nav: { to: string; label: string; icon: LucideIcon; cashier?: true }[] = [
   { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
   { to: "/reports", label: "التقارير", icon: ChartColumnBig },
   { to: "/products", label: "المنتجات", icon: Package },
-  { to: "/categories", label: "التصنيفات", icon: FolderTree },
   { to: "/stock", label: "المخزون", icon: Warehouse },
   { to: "/purchases", label: "المشتريات", icon: Truck },
   { to: "/employees", label: "الموظفون", icon: UsersRound },

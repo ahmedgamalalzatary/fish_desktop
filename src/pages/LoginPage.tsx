@@ -38,7 +38,7 @@ export function LoginPage({
       <section className="relative hidden w-[44%] flex-col items-center justify-center gap-10 overflow-hidden bg-ink p-12 text-white lg:flex">
         <LockScreen />
         <p className="max-w-xs text-center text-lg leading-8 text-white/65">
-          بيع الموبايلات والإكسسوارات بالقطعة، بكل سعة ولون، والمخزون يُخصم مع كل فاتورة.
+          كل جهاز برقمه التسلسلي وسعته ولونه وبطاريته، ويخرج من المخزون مع فاتورته.
         </p>
       </section>
       <section className="flex flex-1 flex-col items-center p-8">

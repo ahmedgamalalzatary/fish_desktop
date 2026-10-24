@@ -9,18 +9,18 @@ export const formatAmount = (cents: number) => amount.format(cents / 100);
 export const formatMoney = (cents: number, currency: string) =>
   currency ? `${formatAmount(cents)} ${currency}` : formatAmount(cents);
 
-/** Arabic counting of pieces: 1 → "قطعة واحدة", 2 → "قطعتان", 5 → "5 قطع", 12 → "12 قطعة". */
-export function formatPieces(count: number): string {
-  const n = Math.abs(count);
-  if (n === 1) return count < 0 ? "-1 قطعة" : "قطعة واحدة";
-  if (n === 2) return count < 0 ? "-2 قطعة" : "قطعتان";
-  if (n >= 3 && n <= 10) return `${count} قطع`;
-  return `${count} قطعة`;
+/** Arabic counting of phones: 1 → "جهاز واحد", 2 → "جهازان", 5 → "5 أجهزة", 12 → "12 جهاز". */
+export function formatPhones(count: number): string {
+  if (count === 1) return "جهاز واحد";
+  if (count === 2) return "جهازان";
+  if (count >= 3 && count <= 10) return `${count} أجهزة`;
+  return `${count} جهاز`;
 }
 
-/** "iPhone 15", "128GB" → "iPhone 15 — 128GB"; a product without options keeps its plain name. */
-export const itemName = (product: string, label: string | null | undefined) =>
-  label ? `${product} — ${label}` : product;
+/** Storage, color and battery of a phone: "256GB · أسود · بطارية 85%". Empty parts are left out. */
+export function phoneDetails(p: { storage: string; color: string; battery: number | null }): string {
+  return [p.storage, p.color, p.battery !== null && `بطارية ${p.battery}%`].filter(Boolean).join(" · ");
+}
 
 /** "12.5" → 1250. Returns null for anything that is not a non-negative number. */
 export function parseMoney(text: string): number | null {
@@ -56,9 +56,10 @@ export const paymentLabels: Record<PaymentMethod, string> = {
 export const paymentNames = (methods: PaymentMethod[]) => methods.map((m) => paymentLabels[m]).join(" + ");
 
 export const movementLabels: Record<MovementReason, string> = {
+  added: "إضافة",
+  purchase: "فاتورة شراء",
   sale: "بيع",
-  purchase: "استلام بضاعة",
-  adjustment: "جرد / تسوية",
+  removed: "إخراج من المخزون",
 };
 
 /** "2026-10-22 14:05:09" → "22/10/2026 14:05" */

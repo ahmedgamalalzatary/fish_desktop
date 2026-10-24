@@ -4,7 +4,6 @@ import { Shell } from "./components/Shell";
 import { api } from "./lib/api";
 import { SessionProvider } from "./lib/session";
 import type { SessionUser } from "./lib/types";
-import { CategoriesPage } from "./pages/CategoriesPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -46,7 +45,6 @@ export default function App() {
               <>
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/products" element={<ProductsPage />} />
-                <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/stock" element={<StockPage />} />
                 <Route path="/purchases" element={<PurchasesPage />} />
                 <Route path="/employees" element={<EmployeesPage />} />

@@ -1,4 +1,4 @@
-use super::products::variant_owner;
+use super::phones::{PhoneInput, insert_phone};
 use super::suppliers::insert_payment;
 use crate::db::now;
 use crate::error::{AppError, AppResult, invalid};
@@ -7,12 +7,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+/// One phone on the invoice; its `cost` is what the supplier charged for it.
 #[derive(Deserialize)]
 pub struct PurchaseItemInput {
-    variant_id: i64,
-    quantity: i64,
-    /// Buy price of one piece, in cents.
-    unit_cost: i64,
+    product_id: i64,
+    #[serde(flatten)]
+    phone: PhoneInput,
 }
 
 #[derive(Deserialize)]
@@ -22,24 +22,15 @@ pub struct PurchaseInput {
     note: String,
     /// Paid to the supplier now; the rest is added to their balance.
     paid: i64,
-    /// Set each variant's cost price from this invoice.
-    update_cost: bool,
     items: Vec<PurchaseItemInput>,
 }
 
-/// Records a supplier invoice: adds every line to stock and the unpaid part to the supplier's balance.
+/// Records a supplier invoice: adds every phone to stock and the unpaid part to the supplier's balance.
 pub fn insert_purchase(db: &mut Connection, user_id: i64, input: &PurchaseInput) -> AppResult<i64> {
     if input.items.is_empty() {
-        return invalid("أضف صنفاً واحداً على الأقل");
+        return invalid("أضف جهازاً واحداً على الأقل");
     }
-    if input
-        .items
-        .iter()
-        .any(|i| i.quantity <= 0 || i.unit_cost < 0)
-    {
-        return invalid("أدخل كمية وسعر شراء صحيحين لكل صنف");
-    }
-    let total: i64 = input.items.iter().map(|i| i.unit_cost * i.quantity).sum();
+    let total: i64 = input.items.iter().map(|i| i.phone.cost).sum();
     if input.paid < 0 || input.paid > total {
         return invalid("المبلغ المدفوع يجب ألا يزيد عن إجمالي الفاتورة");
     }
@@ -66,22 +57,14 @@ pub fn insert_purchase(db: &mut Connection, user_id: i64, input: &PurchaseInput)
     let purchase_id = tx.last_insert_rowid();
 
     for item in &input.items {
-        let (product_id, _) = variant_owner(&tx, item.variant_id)?;
-        tx.execute(
-            "INSERT INTO stock_movements (product_id, variant_id, change_qty, reason, cost_total, purchase_id, user_id, created_at)
-             VALUES (?1, ?2, ?3, 'purchase', ?4, ?5, ?6, ?7)",
-            params![product_id, item.variant_id, item.quantity, item.unit_cost * item.quantity, purchase_id, user_id, ts],
+        insert_phone(
+            &tx,
+            item.product_id,
+            &item.phone,
+            Some(purchase_id),
+            user_id,
+            &ts,
         )?;
-        tx.execute(
-            "UPDATE product_variants SET stock = stock + ?1 WHERE id = ?2",
-            params![item.quantity, item.variant_id],
-        )?;
-        if input.update_cost && item.unit_cost > 0 {
-            tx.execute(
-                "UPDATE product_variants SET cost = ?1 WHERE id = ?2",
-                params![item.unit_cost, item.variant_id],
-            )?;
-        }
     }
 
     if input.paid > 0 {
@@ -112,8 +95,8 @@ pub struct PurchaseSummary {
     supplier_id: i64,
     supplier_name: String,
     invoice_no: String,
+    /// Phones on the invoice.
     items_count: i64,
-    pieces: i64,
     total: i64,
     /// Paid while receiving this invoice; later payments go to the supplier's account.
     paid: i64,
@@ -121,8 +104,7 @@ pub struct PurchaseSummary {
 }
 
 const SUMMARY_SQL: &str = "SELECT p.id, p.created_at, s.id, s.name, p.invoice_no,
-        (SELECT COUNT(*) FROM stock_movements m WHERE m.purchase_id = p.id),
-        COALESCE((SELECT SUM(change_qty) FROM stock_movements m WHERE m.purchase_id = p.id), 0),
+        (SELECT COUNT(*) FROM phones ph WHERE ph.purchase_id = p.id),
         p.total,
         COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.purchase_id = p.id), 0),
         u.name
@@ -138,10 +120,9 @@ fn summary_row(r: &rusqlite::Row) -> rusqlite::Result<PurchaseSummary> {
         supplier_name: r.get(3)?,
         invoice_no: r.get(4)?,
         items_count: r.get(5)?,
-        pieces: r.get(6)?,
-        total: r.get(7)?,
-        paid: r.get(8)?,
-        user_name: r.get(9)?,
+        total: r.get(6)?,
+        paid: r.get(7)?,
+        user_name: r.get(8)?,
     })
 }
 
@@ -166,9 +147,13 @@ pub fn list_purchases(
 #[derive(Serialize)]
 pub struct PurchaseItem {
     product_name: String,
-    variant_label: String,
-    quantity: i64,
-    cost_total: i64,
+    serial: String,
+    storage: String,
+    color: String,
+    battery: Option<i64>,
+    cost: i64,
+    /// in_stock, sold or removed.
+    status: String,
 }
 
 #[derive(Serialize)]
@@ -191,19 +176,20 @@ pub fn get_purchase(state: State<AppState>, id: i64) -> AppResult<Purchase> {
         r.get(0)
     })?;
     let mut stmt = db.prepare(
-        "SELECT pr.name, v.label, m.change_qty, COALESCE(m.cost_total, 0)
-         FROM stock_movements m
-         JOIN products pr ON pr.id = m.product_id
-         JOIN product_variants v ON v.id = m.variant_id
-         WHERE m.purchase_id = ?1 ORDER BY m.id",
+        "SELECT pr.name, ph.serial, ph.storage, ph.color, ph.battery, ph.cost, ph.status
+         FROM phones ph JOIN products pr ON pr.id = ph.product_id
+         WHERE ph.purchase_id = ?1 ORDER BY ph.id",
     )?;
     let items = stmt
         .query_map([id], |r| {
             Ok(PurchaseItem {
                 product_name: r.get(0)?,
-                variant_label: r.get(1)?,
-                quantity: r.get(2)?,
-                cost_total: r.get(3)?,
+                serial: r.get(1)?,
+                storage: r.get(2)?,
+                color: r.get(3)?,
+                battery: r.get(4)?,
+                cost: r.get(5)?,
+                status: r.get(6)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -214,17 +200,22 @@ pub fn get_purchase(state: State<AppState>, id: i64) -> AppResult<Purchase> {
     })
 }
 
-/// Undoes an invoice entered by mistake: takes its pieces back out of stock and removes its payment.
-/// Cost prices changed by the invoice are left as they are.
+/// Undoes an invoice entered by mistake: deletes its phones and its payment. Refused once any of its
+/// phones has been sold or taken out, since that history must stay.
 pub fn remove_purchase(db: &mut Connection, id: i64) -> AppResult<()> {
     let tx = db.transaction()?;
-    tx.execute(
-        "UPDATE product_variants SET stock = stock - (
-             SELECT SUM(m.change_qty) FROM stock_movements m WHERE m.purchase_id = ?1 AND m.variant_id = product_variants.id)
-         WHERE id IN (SELECT variant_id FROM stock_movements WHERE purchase_id = ?1)",
+    let gone: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM phones WHERE purchase_id = ?1 AND status != 'in_stock'",
         [id],
+        |r| r.get(0),
     )?;
+    if gone > 0 {
+        return invalid(format!(
+            "بِيع أو خرج {gone} جهاز من هذه الفاتورة، فلا يمكن حذفها"
+        ));
+    }
     tx.execute("DELETE FROM stock_movements WHERE purchase_id = ?1", [id])?;
+    tx.execute("DELETE FROM phones WHERE purchase_id = ?1", [id])?;
     tx.execute("DELETE FROM supplier_payments WHERE purchase_id = ?1", [id])?;
     if tx.execute("DELETE FROM purchases WHERE id = ?1", [id])? == 0 {
         return Err(AppError::NotFound("فاتورة الشراء"));
@@ -254,10 +245,8 @@ mod tests {
         let db = crate::db::open(&path).unwrap();
         db.execute_batch(
             "INSERT INTO users (id, name, username, password_hash, role, created_at) VALUES (1, 'a', 'a', 'x', 'admin', '2026-01-01 00:00:00');
-             INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');
-             INSERT INTO products (id, name, category_id, created_at, updated_at)
-                 VALUES (1, 'Galaxy A55', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
-             INSERT INTO product_variants (id, product_id, label, price, cost, stock) VALUES (1, 1, '256GB', 1800000, 1500000, 1);
+             INSERT INTO products (id, name, created_at, updated_at)
+                 VALUES (1, 'Galaxy A55', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
              INSERT INTO suppliers (id, name, opening_balance, created_at) VALUES (1, 'مورد', 10000, '2026-01-01 00:00:00');",
         )
         .unwrap();
@@ -276,13 +265,27 @@ mod tests {
         .unwrap()
     }
 
-    fn stock(db: &Connection) -> (i64, i64) {
+    fn stock(db: &Connection) -> i64 {
         db.query_row(
-            "SELECT stock, cost FROM product_variants WHERE id = 1",
+            "SELECT COUNT(*) FROM phones WHERE status = 'in_stock'",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| r.get(0),
         )
         .unwrap()
+    }
+
+    fn item(serial: &str) -> PurchaseItemInput {
+        PurchaseItemInput {
+            product_id: 1,
+            phone: PhoneInput {
+                serial: serial.into(),
+                storage: "256GB".into(),
+                color: String::new(),
+                battery: None,
+                price: 1900000,
+                cost: 1600000,
+            },
+        }
     }
 
     fn input(paid: i64) -> PurchaseInput {
@@ -291,12 +294,7 @@ mod tests {
             invoice_no: "77".into(),
             note: String::new(),
             paid,
-            update_cost: true,
-            items: vec![PurchaseItemInput {
-                variant_id: 1,
-                quantity: 4,
-                unit_cost: 1600000,
-            }],
+            items: ["S1", "S2", "S3", "S4"].map(item).into(),
         }
     }
 
@@ -304,12 +302,19 @@ mod tests {
     fn purchase_adds_stock_and_unpaid_part_to_balance_and_can_be_undone() {
         let (mut db, path) = setup();
         let id = insert_purchase(&mut db, 1, &input(4000000)).unwrap();
-        assert_eq!(stock(&db), (5, 1600000));
+        assert_eq!(stock(&db), 4);
         assert_eq!(balance(&db), 10000 + 6400000 - 4000000);
 
         remove_purchase(&mut db, id).unwrap();
-        assert_eq!(stock(&db).0, 1);
+        assert_eq!(stock(&db), 0);
         assert_eq!(balance(&db), 10000);
+
+        // Once one of its phones is sold, the invoice stays.
+        let id = insert_purchase(&mut db, 1, &input(0)).unwrap();
+        db.execute("UPDATE phones SET status = 'sold' WHERE serial = 'S2'", [])
+            .unwrap();
+        assert!(remove_purchase(&mut db, id).is_err());
+        assert_eq!(stock(&db), 3);
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
@@ -318,7 +323,7 @@ mod tests {
     fn rejects_paying_more_than_the_invoice() {
         let (mut db, path) = setup();
         assert!(insert_purchase(&mut db, 1, &input(6400001)).is_err());
-        assert_eq!(stock(&db).0, 1);
+        assert_eq!(stock(&db), 0);
         drop(db);
         let _ = std::fs::remove_file(&path);
     }

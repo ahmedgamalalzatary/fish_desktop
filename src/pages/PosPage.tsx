@@ -1,14 +1,4 @@
-import {
-  Banknote,
-  CreditCard,
-  Minus,
-  Plus,
-  Receipt as ReceiptIcon,
-  Search,
-  Smartphone,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Banknote, CreditCard, Receipt as ReceiptIcon, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportButtons } from "../components/ExportButtons";
 import { Receipt } from "../components/Receipt";
@@ -22,36 +12,33 @@ import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatPieces,
+  formatPhones,
   isoDate,
   parseMoney,
   paymentLabels,
   paymentNames,
+  phoneDetails,
 } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
-import type { PaymentMethod, Product, Sale, SaleSummary, Variant } from "../lib/types";
+import type { PaymentMethod, Phone, Product, Sale, SaleSummary } from "../lib/types";
 
 interface CartLine {
   product: Product;
-  variant: Variant;
-  quantity: number;
+  phone: Phone;
 }
-
-const lineTotal = (l: CartLine) => l.variant.price * l.quantity;
 
 const paymentIcons = { cash: Banknote, card: CreditCard, wallet: Smartphone };
 const methods = Object.keys(paymentLabels) as PaymentMethod[];
 
-/** A product sold without options has one variant with no label. */
-const hasOptions = (p: Product) => p.variants.length > 1 || p.variants[0]?.label !== "";
+/** The brand is the first word of a model's name: "Samsung Galaxy S24" → "Samsung". */
+const brandOf = (p: Product) => p.name.trim().split(/\s+/)[0];
 
 export function PosPage() {
   const { settings } = useSession();
   const toast = useToast();
   const [query, setQuery] = useState("");
-  const [topCategory, setTopCategory] = useState<number | null>(null);
-  const [subCategory, setSubCategory] = useState<number | null>(null);
+  const [brand, setBrand] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [picking, setPicking] = useState<Product | null>(null);
@@ -60,63 +47,49 @@ export function PosPage() {
   const [showToday, setShowToday] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const [data, load] = useResource(
-    useCallback(() => Promise.all([api.listProducts(), api.listCategories()]), []),
-  );
-  const [products, categories] = useMemo(() => data ?? [[], []], [data]);
+  const [data, load] = useResource(useCallback(() => api.listProducts(), []));
+  const products = useMemo(() => data ?? [], [data]);
 
-  const allowNegative = settings.allow_negative_stock === "1";
-  const topCategories = categories.filter((c) => c.parent_id === null);
-  const subCategories = categories.filter((c) => c.parent_id !== null && c.parent_id === topCategory);
+  // Phones already in the cart are no longer offered.
+  const inCart = useMemo(() => new Set(cart.map((l) => l.phone.id)), [cart]);
+  const available = useCallback((p: Product) => p.phones.filter((x) => !inCart.has(x.id)), [inCart]);
 
+  const brands = useMemo(() => [...new Set(products.map(brandOf))].sort(), [products]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return products.filter((p) => {
-      if (
-        q &&
-        !p.name.toLowerCase().includes(q) &&
-        !p.variants.some((v) => v.label.toLowerCase().includes(q))
+    return products
+      .filter(
+        (p) =>
+          (brand === null || brandOf(p) === brand) &&
+          (!q ||
+            p.name.toLowerCase().includes(q) ||
+            p.phones.some((x) => [x.serial, x.storage, x.color].some((s) => s.toLowerCase().includes(q)))),
       )
-        return false;
-      if (subCategory !== null) return p.category_id === subCategory;
-      if (topCategory !== null) return p.category_id === topCategory || p.parent_category_id === topCategory;
-      return true;
-    });
-  }, [products, query, topCategory, subCategory]);
+      .sort((a, b) => Number(b.phones.length > 0) - Number(a.phones.length > 0));
+  }, [products, query, brand]);
 
-  // Pieces already in the cart, so the stock shown stays honest.
-  const inCart = useMemo(() => new Map(cart.map((l) => [l.variant.id, l.quantity])), [cart]);
-  const available = useCallback((v: Variant) => v.stock - (inCart.get(v.id) ?? 0), [inCart]);
+  const total = cart.reduce((sum, l) => sum + l.phone.price, 0);
 
-  const total = cart.reduce((sum, l) => sum + lineTotal(l), 0);
-  const pieces = cart.reduce((sum, l) => sum + l.quantity, 0);
-
-  const addLine = (product: Product, variant: Variant, quantity: number) => {
-    if (!allowNegative && available(variant) < quantity) {
-      toast(`لا يوجد مخزون كافٍ من «${product.name}${variant.label ? ` ${variant.label}` : ""}»`, "error");
-      return;
-    }
-    setCart((c) => {
-      const existing = c.find((l) => l.variant.id === variant.id);
-      if (existing) return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
-      return [...c, { product, variant, quantity }];
-    });
+  const add = (product: Product, phone: Phone) => {
+    if (!inCart.has(phone.id)) setCart((c) => [...c, { product, phone }]);
     setPicking(null);
     searchRef.current?.focus();
   };
 
-  const pick = (p: Product) => (hasOptions(p) ? setPicking(p) : addLine(p, p.variants[0], 1));
-
-  const changeQuantity = (line: CartLine, delta: number) => {
-    if (delta > 0 && !allowNegative && available(line.variant) < delta) {
-      toast("هذا كل المتوفر في المخزون", "error");
-      return;
+  /** Enter in the search box: a scanned serial goes straight to the cart, a single model opens its phones. */
+  const searchEnter = () => {
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    for (const p of products) {
+      const phone = p.phones.find((x) => x.serial.toLowerCase() === q);
+      if (phone) {
+        if (inCart.has(phone.id)) toast("هذا الجهاز في الفاتورة بالفعل", "error");
+        else add(p, phone);
+        setQuery("");
+        return;
+      }
     }
-    setCart((c) =>
-      c.flatMap((l) =>
-        l !== line ? [l] : l.quantity + delta <= 0 ? [] : [{ ...l, quantity: l.quantity + delta }],
-      ),
-    );
+    if (visible.length === 1 && available(visible[0]).length) setPicking(visible[0]);
   };
 
   const finishSale = (sale: Sale) => {
@@ -139,7 +112,8 @@ export function PosPage() {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ابحث بالموديل أو السعة أو اللون"
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchEnter())}
+                placeholder="امسح الرقم التسلسلي أو ابحث بالموديل أو السعة أو اللون"
                 className="h-12 w-full rounded-xl border border-line bg-alu ps-11 pe-4 text-base select-text placeholder:text-dim/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
               />
             </div>
@@ -148,28 +122,14 @@ export function PosPage() {
               فواتير اليوم
             </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Chip active={topCategory === null} onClick={() => (setTopCategory(null), setSubCategory(null))}>
-              الكل
-            </Chip>
-            {topCategories.map((c) => (
-              <Chip
-                key={c.id}
-                active={topCategory === c.id}
-                onClick={() => (setTopCategory(c.id), setSubCategory(null))}
-              >
-                {c.name}
+          {brands.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              <Chip active={brand === null} onClick={() => setBrand(null)}>
+                الكل
               </Chip>
-            ))}
-          </div>
-          {subCategories.length > 0 && (
-            <div className="flex flex-wrap gap-2 border-t border-dashed border-line pt-3">
-              <Chip small active={subCategory === null} onClick={() => setSubCategory(null)}>
-                كل الماركات
-              </Chip>
-              {subCategories.map((c) => (
-                <Chip key={c.id} small active={subCategory === c.id} onClick={() => setSubCategory(c.id)}>
-                  {c.name}
+              {brands.map((b) => (
+                <Chip key={b} active={brand === b} onClick={() => setBrand(b)}>
+                  <span dir="auto">{b}</span>
                 </Chip>
               ))}
             </div>
@@ -178,10 +138,10 @@ export function PosPage() {
 
         <div className="flex-1 overflow-y-auto p-6">
           {visible.length === 0 ? (
-            <Empty title={products.length === 0 ? "لا توجد منتجات بعد" : "لا توجد نتائج"}>
+            <Empty title={products.length === 0 ? "لا توجد موديلات بعد" : "لا توجد نتائج"}>
               {products.length === 0
-                ? "يضيف المدير المنتجات من صفحة المنتجات، ثم تظهر هنا للبيع."
-                : "جرّب اسماً آخر أو اختر تصنيفاً مختلفاً."}
+                ? "يضيف المدير الموديلات وأجهزتها من صفحة المنتجات، ثم تظهر هنا للبيع."
+                : "جرّب اسماً آخر أو امسح الرقم التسلسلي مرة أخرى."}
             </Empty>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
@@ -189,10 +149,9 @@ export function PosPage() {
                 <ProductCard
                   key={p.id}
                   product={p}
-                  available={available}
-                  allowNegative={allowNegative}
+                  phones={available(p)}
                   currency={settings.currency}
-                  onPick={() => pick(p)}
+                  onPick={() => setPicking(p)}
                 />
               ))}
             </div>
@@ -215,51 +174,34 @@ export function PosPage() {
         <div className="flex-1 overflow-y-auto px-5">
           {cart.length === 0 ? (
             <p className="py-16 text-center text-sm leading-7 text-dim">
-              اختر منتجاً من القائمة
+              امسح الرقم التسلسلي للجهاز
               <br />
-              ليُضاف إلى الفاتورة.
+              أو اختر الموديل من القائمة.
             </p>
           ) : (
             <ul className="divide-y divide-line">
               {cart.map((l) => (
-                <li key={l.variant.id} className="flex items-center gap-3 py-3">
+                <li key={l.phone.id} className="flex items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">
                     {/* dir="auto" keeps English model names cut at their end, not their start. */}
                     <div dir="auto" className="truncate text-right font-medium">
                       {l.product.name}
                     </div>
-                    <div className="truncate text-sm text-dim">
-                      {[l.variant.label, l.quantity > 1 && `${formatAmount(l.variant.price)} للقطعة`]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    <div className="truncate text-sm text-dim">{phoneDetails(l.phone) || "—"}</div>
+                    <div dir="ltr" className="truncate text-right text-xs text-dim">
+                      {l.phone.serial}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 rounded-lg bg-alu p-0.5">
-                    <Button
-                      tone="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => changeQuantity(l, 1)}
-                      aria-label="زيادة"
-                    >
-                      <Plus className="size-4" />
-                    </Button>
-                    <span className="w-6 text-center font-medium">{l.quantity}</span>
-                    <Button
-                      tone="ghost"
-                      size="icon"
-                      className="size-7"
-                      onClick={() => changeQuantity(l, -1)}
-                      aria-label={l.quantity === 1 ? "حذف" : "نقص"}
-                    >
-                      {l.quantity === 1 ? (
-                        <Trash2 className="size-4 text-alert" />
-                      ) : (
-                        <Minus className="size-4" />
-                      )}
-                    </Button>
-                  </div>
-                  <div className="w-24 text-end font-semibold">{formatAmount(lineTotal(l))}</div>
+                  <div className="w-24 text-end font-semibold">{formatAmount(l.phone.price)}</div>
+                  <Button
+                    tone="danger-ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setCart((c) => c.filter((x) => x !== l))}
+                    aria-label="حذف من الفاتورة"
+                  >
+                    <X className="size-4" />
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -268,7 +210,7 @@ export function PosPage() {
 
         <footer className="flex flex-col gap-3 border-t border-line p-5">
           <Screen
-            label={`الإجمالي · ${formatPieces(pieces)}`}
+            label={`الإجمالي · ${formatPhones(cart.length)}`}
             value={formatAmount(total)}
             unit={settings.currency}
             size="xl"
@@ -302,12 +244,11 @@ export function PosPage() {
       </aside>
 
       {picking && (
-        <PickVariantModal
+        <PickPhoneModal
           product={picking}
-          available={available}
-          allowNegative={allowNegative}
+          phones={available(picking)}
           currency={settings.currency}
-          onAdd={addLine}
+          onAdd={(phone) => add(picking, phone)}
           onClose={() => setPicking(null)}
         />
       )}
@@ -334,12 +275,10 @@ export function PosPage() {
 
 function Chip({
   active,
-  small,
   onClick,
   children,
 }: {
   active: boolean;
-  small?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -349,8 +288,7 @@ function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        "rounded-full border font-medium transition-colors",
-        small ? "h-8 px-3 text-sm" : "h-10 px-4",
+        "h-10 rounded-full border px-4 font-medium transition-colors",
         active ? "border-ink bg-ink text-white" : "border-line bg-white text-ink-2 hover:border-ink-3/40",
       )}
     >
@@ -359,7 +297,7 @@ function Chip({
   );
 }
 
-/** Stock as signal bars: full when well stocked, one bar when low, none when out. */
+/** Stock as signal bars: full when well stocked, one bar when it is the last phone, none when out. */
 function StockBars({ level }: { level: 0 | 1 | 2 | 3 }) {
   return (
     <span className="inline-flex items-end gap-[2px]" aria-hidden>
@@ -377,52 +315,46 @@ function StockBars({ level }: { level: 0 | 1 | 2 | 3 }) {
   );
 }
 
-/** A model on the display shelf: name, its options, a price and how many are left. */
+/** A model on the display shelf: its name, the storages on hand, a starting price and how many are left. */
 function ProductCard({
   product: p,
-  available,
-  allowNegative,
+  phones,
   currency,
   onPick,
 }: {
   product: Product;
-  available: (v: Variant) => number;
-  allowNegative: boolean;
+  /** Its phones in stock that are not already in the cart. */
+  phones: Phone[];
   currency: string;
   onPick: () => void;
 }) {
-  const left = p.variants.reduce((s, v) => s + Math.max(available(v), 0), 0);
-  const out = left <= 0;
-  const low = !out && p.variants.every((v) => available(v) <= 0 || available(v) <= v.low_stock);
-  const prices = p.variants.map((v) => v.price);
-  const fromPrice = Math.min(...prices);
-  const options = hasOptions(p) ? p.variants : [];
+  const left = phones.length;
+  const storages = [...new Set(phones.map((x) => x.storage).filter(Boolean))];
+  const prices = phones.map((x) => x.price);
 
   return (
     <button
       type="button"
       onClick={onPick}
-      disabled={out && !allowNegative}
+      disabled={left === 0}
       className="group flex min-h-40 flex-col rounded-2xl border border-line bg-white p-4 text-start transition-colors hover:border-ink-3/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-3 disabled:opacity-50"
     >
-      <div className="text-xs text-dim">{p.category_name}</div>
-      <div className="mt-0.5 text-lg leading-7 font-semibold">{p.name}</div>
-      {options.length > 0 && (
+      <div dir="auto" className="text-lg leading-7 font-semibold">
+        {p.name}
+      </div>
+      {storages.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {options.slice(0, 3).map((v) => (
+          {storages.slice(0, 3).map((s) => (
             <span
-              key={v.id}
-              className={cx(
-                "rounded-md border border-line px-1.5 py-0.5 text-[11px] leading-4 text-ink-2",
-                available(v) <= 0 && "text-dim line-through",
-              )}
+              key={s}
+              className="rounded-md border border-line px-1.5 py-0.5 text-[11px] leading-4 text-ink-2"
             >
-              {v.label}
+              {s}
             </span>
           ))}
-          {options.length > 3 && (
+          {storages.length > 3 && (
             <span className="rounded-md bg-alu px-1.5 py-0.5 text-[11px] leading-4 text-ink-2">
-              +{options.length - 3}
+              +{storages.length - 3}
             </span>
           )}
         </div>
@@ -432,130 +364,64 @@ function ProductCard({
         <div
           className={cx(
             "flex items-center gap-1.5 text-xs",
-            out || low ? "font-medium text-alert" : "text-dim",
+            left <= 1 ? "font-medium text-alert" : "text-dim",
           )}
         >
-          <StockBars level={out ? 0 : low ? 1 : left > 5 ? 3 : 2} />
-          {out ? "نفد المخزون" : formatPieces(left)}
+          <StockBars level={left === 0 ? 0 : left === 1 ? 1 : left > 4 ? 3 : 2} />
+          {left === 0 ? "نفد المخزون" : formatPhones(left)}
         </div>
-        <div className="text-end leading-tight">
-          {new Set(prices).size > 1 && <span className="block text-[11px] text-dim">يبدأ من</span>}
-          <span className="font-display text-xl font-normal">{formatAmount(fromPrice)}</span>
-          <span className="ms-1 text-[11px] text-dim">{currency}</span>
-        </div>
+        {left > 0 && (
+          <div className="text-end leading-tight">
+            {new Set(prices).size > 1 && <span className="block text-[11px] text-dim">يبدأ من</span>}
+            <span className="font-display text-xl font-normal">{formatAmount(Math.min(...prices))}</span>
+            <span className="ms-1 text-[11px] text-dim">{currency}</span>
+          </div>
+        )}
       </div>
     </button>
   );
 }
 
-function PickVariantModal({
+/** The phones of one model on hand: tapping one adds it to the ticket. */
+function PickPhoneModal({
   product,
-  available,
-  allowNegative,
+  phones,
   currency,
   onAdd,
   onClose,
 }: {
   product: Product;
-  available: (v: Variant) => number;
-  allowNegative: boolean;
+  phones: Phone[];
   currency: string;
-  onAdd: (product: Product, variant: Variant, quantity: number) => void;
+  onAdd: (phone: Phone) => void;
   onClose: () => void;
 }) {
-  const [variant, setVariant] = useState<Variant>(
-    () => product.variants.find((v) => allowNegative || available(v) > 0) ?? product.variants[0],
-  );
-  const [quantity, setQuantity] = useState(1);
-  const left = available(variant);
-  const overStock = !allowNegative && quantity > left;
-
-  const submit = () => !overStock && onAdd(product, variant, quantity);
-
   return (
-    <Modal
-      title={product.name}
-      onClose={onClose}
-      width="max-w-2xl"
-      footer={
-        <>
-          <span className={cx("me-auto text-sm", overStock ? "font-medium text-alert" : "text-dim")}>
-            {overStock ? "الكمية أكبر من المتوفر: " : "المتوفر: "}
-            {formatPieces(left)}
-          </span>
-          <Button tone="outline" onClick={onClose}>
-            إلغاء
-          </Button>
-          <Button onClick={submit} disabled={overStock}>
-            إضافة إلى الفاتورة
-          </Button>
-        </>
-      }
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        className="flex flex-col gap-5"
-      >
-        <div className="grid grid-cols-3 gap-3">
-          {product.variants.map((v) => {
-            const n = available(v);
-            return (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => (setVariant(v), setQuantity(1))}
-                disabled={n <= 0 && !allowNegative}
-                aria-pressed={variant.id === v.id}
-                className={cx(
-                  "flex flex-col items-start gap-1 rounded-xl border-2 bg-white p-3 text-start transition-colors disabled:opacity-45",
-                  variant.id === v.id ? "border-ink" : "border-transparent hover:border-line",
-                )}
-              >
-                <span className="font-semibold">{v.label}</span>
-                <span className="font-display text-lg">{formatAmount(v.price)}</span>
-                <span className={cx("text-xs", n <= 0 ? "text-alert" : "text-dim")}>
-                  {n <= 0 ? "نفد" : `متوفر ${formatPieces(n)}`}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-ink-2">العدد</span>
-          <div className="flex items-center gap-2 rounded-xl bg-white p-1">
-            <Button
-              tone="ghost"
-              size="icon"
-              className="size-11"
-              onClick={() => setQuantity((q) => q + 1)}
-              aria-label="زيادة"
-            >
-              <Plus className="size-5" />
-            </Button>
-            <span className="w-10 text-center font-display text-2xl font-light">{quantity}</span>
-            <Button
-              tone="ghost"
-              size="icon"
-              className="size-11"
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              aria-label="نقص"
-            >
-              <Minus className="size-5" />
-            </Button>
-          </div>
-          <Screen
-            className="flex-1"
-            size="md"
-            label="السعر"
-            value={formatAmount(variant.price * quantity)}
-            unit={currency}
-          />
-        </div>
-        <button type="submit" hidden />
-      </form>
+    <Modal title={product.name} onClose={onClose} width="max-w-3xl">
+      <p className="mb-3 text-sm text-dim">اختر الجهاز الذي يأخذه العميل، وطابق رقمه التسلسلي مع العلبة.</p>
+      <div className="grid grid-cols-3 gap-3">
+        {phones.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            onClick={() => onAdd(x)}
+            className="flex flex-col items-start gap-1 rounded-xl border-2 border-transparent bg-white p-3 text-start transition-colors hover:border-ink focus-visible:border-ink focus-visible:outline-none"
+          >
+            <span className="font-semibold">{[x.storage, x.color].filter(Boolean).join(" · ") || "—"}</span>
+            {x.battery !== null && (
+              <span className={cx("text-xs", x.battery < 80 ? "text-alert" : "text-dim")}>
+                البطارية {x.battery}%
+              </span>
+            )}
+            <span dir="ltr" className="text-xs text-dim">
+              {x.serial}
+            </span>
+            <span className="mt-1 font-display text-lg">
+              {formatAmount(x.price)} <span className="font-sans text-[11px] text-dim">{currency}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </Modal>
   );
 }
@@ -625,7 +491,7 @@ function CheckoutModal({
     setBusy(true);
     try {
       const sale = await api.createSale(
-        cart.map((l) => ({ variant_id: l.variant.id, quantity: l.quantity })),
+        cart.map((l) => l.phone.id),
         methods.filter((m) => amountOf(m) > 0).map((m) => ({ method: m, amount: amountOf(m) })),
       );
       onDone(sale);

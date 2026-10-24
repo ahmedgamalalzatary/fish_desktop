@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAmount, formatPieces, isoDate, itemName, parseCount, parseMoney } from "../src/lib/format";
+import { formatAmount, formatPhones, isoDate, parseCount, phoneDetails, parseMoney } from "../src/lib/format";
 
 describe("parseMoney", () => {
   it("converts typed amounts to cents", () => {
@@ -37,17 +37,17 @@ describe("formatting", () => {
     expect(formatAmount(123456)).toBe("1,234.56");
   });
 
-  it("counts pieces in Arabic", () => {
-    expect(formatPieces(1)).toBe("قطعة واحدة");
-    expect(formatPieces(2)).toBe("قطعتان");
-    expect(formatPieces(5)).toBe("5 قطع");
-    expect(formatPieces(12)).toBe("12 قطعة");
-    expect(formatPieces(0)).toBe("0 قطعة");
+  it("counts phones in Arabic", () => {
+    expect(formatPhones(1)).toBe("جهاز واحد");
+    expect(formatPhones(2)).toBe("جهازان");
+    expect(formatPhones(5)).toBe("5 أجهزة");
+    expect(formatPhones(12)).toBe("12 جهاز");
+    expect(formatPhones(0)).toBe("0 جهاز");
   });
 
-  it("names a variant after its product", () => {
-    expect(itemName("iPhone 15", "128GB")).toBe("iPhone 15 — 128GB");
-    expect(itemName("شاحن 20W", "")).toBe("شاحن 20W");
+  it("describes a phone, leaving out what is not recorded", () => {
+    expect(phoneDetails({ storage: "256GB", color: "أسود", battery: 85 })).toBe("256GB · أسود · بطارية 85%");
+    expect(phoneDetails({ storage: "", color: "", battery: null })).toBe("");
   });
 
   it("uses the local calendar date", () => {

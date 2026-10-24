@@ -2,7 +2,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { DatabaseBackup } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Receipt } from "../components/Receipt";
-import { Button, Field, Input, PageHeader, Panel, Toggle } from "../components/ui";
+import { Button, Field, Input, PageHeader, Panel } from "../components/ui";
 import { api } from "../lib/api";
 import { isoDate } from "../lib/format";
 import { useSession } from "../lib/session";
@@ -22,18 +22,12 @@ const sampleSale: Sale = {
   change_due: 5000,
   items: [
     {
-      product_name: "Samsung Galaxy A55",
-      variant_label: "256GB أزرق",
-      quantity: 1,
-      unit_price: 3150000,
-      line_total: 3150000,
-    },
-    {
-      product_name: "جراب سيليكون",
-      variant_label: null,
-      quantity: 2,
-      unit_price: 47500,
-      line_total: 95000,
+      product_name: "Samsung Galaxy S24 Ultra",
+      serial: "352914110482316",
+      storage: "256GB",
+      color: "رمادي",
+      battery: 94,
+      price: 3245000,
     },
   ],
 };
@@ -134,15 +128,6 @@ export function SettingsPage() {
             <Receipt sale={sampleSale} settings={draft} />
           </div>
         </div>
-      </Section>
-
-      <Section title="البيع" description="يمنع البرنامج افتراضياً بيع كمية أكبر من المخزون المسجّل.">
-        <Toggle
-          checked={draft.allow_negative_stock === "1"}
-          onChange={(v) => set("allow_negative_stock")(v ? "1" : "0")}
-          label="السماح بالبيع عند نفاد المخزون"
-          description="فعّله إن كنت لا تسجّل كل البضاعة الواردة. يصبح المخزون سالباً حتى تسجّل الاستلام أو الجرد."
-        />
       </Section>
 
       <ChangePassword />
