@@ -13,6 +13,7 @@
     "test:watch": "vitest --mode",
     "check": "node scripts/shops.ts check",
     "shops": "node scripts/shops.ts list",
+    "activation-code": "node scripts/activation-code.ts",
     "format": "prettier --print-width 110 --end-of-line auto --write src tests docs scripts .github \"*.ts\" \"*.json\" README.md && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "prettier --print-width 110 --end-of-line auto --check src tests docs scripts .github \"*.ts\" \"*.json\" README.md && cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "tauri": "tauri"

@@ -42,6 +42,7 @@ pub fn setup_admin(
     username: String,
     password: String,
 ) -> AppResult<SessionUser> {
+    state.activation.require()?;
     let (name, username) = (name.trim().to_string(), username.trim().to_string());
     if name.is_empty() || username.is_empty() {
         return invalid("الاسم واسم المستخدم مطلوبان");
@@ -68,6 +69,7 @@ pub fn setup_admin(
 
 #[tauri::command]
 pub fn login(state: State<AppState>, username: String, password: String) -> AppResult<SessionUser> {
+    state.activation.require()?;
     let db = state.db.lock().unwrap();
     let row = db
         .query_row(

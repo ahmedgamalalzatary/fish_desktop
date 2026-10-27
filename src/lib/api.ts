@@ -37,6 +37,8 @@ export type Range = { from: string; to: string };
 
 /** The shared commands; each shop adds its own in src/shops/<shop>/api.ts. */
 export const api = {
+  activationStatus: () => call<{ active: boolean; device_code: string }>("activation_status"),
+  activate: (code: string) => call<void>("activate", { code }),
   needsSetup: () => call<boolean>("needs_setup"),
   setupAdmin: (name: string, username: string, password: string) =>
     call<SessionUser>("setup_admin", { name, username, password }),

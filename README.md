@@ -25,9 +25,12 @@ own app, with its own name, look, database and updates.
   the shop's own (products, categories…), for any date range.
 - **Print & PDF:** every report, sales list and receipt prints or saves as PDF (rendered by WebView2, so
   Arabic is shaped correctly).
-- **Backup:** a one-click database copy from Settings.
-- **Auto-update:** the app checks for a new version when it opens and an admin installs it with one
-  click; the data stays as it is.
+- **Backups:** a copy of the database every day (the last 7 are kept) and one before every update (the
+  last 3), in a `backups` folder next to the database, plus a one-click copy anywhere from Settings.
+- **Auto-update:** when the app opens it installs any new version by itself before anyone signs in, then
+  restarts; once someone is working, an admin sees a banner instead. The data stays as it is.
+- **Activation:** a new PC shows a device code and works only after the owner's activation code for it.
+  A code is good on that one PC, for that one shop, forever.
 
 What only one shop has (products by weight and categories in fish, phones by serial in mobile) lives in
 that shop's folder. On first launch, the app asks you to create the admin account.
@@ -77,6 +80,19 @@ release) at it; installed copies then offer the update. A version that was alrea
 The update signing key is `%USERPROFILE%\.tauri\pos-updater.key` (password next to it); the repository
 holds it as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep a
 backup of it: without it, no installed shop can be updated again.
+
+## Activating a shop's PC
+
+On first start the app shows a **device code** (e.g. `64RU-S3TU-FVO6-DQUJ`). The shop sends it to you;
+you make its activation code and send that back to paste into the app:
+
+```sh
+npm run activation-code 64RU-S3TU-FVO6-DQUJ
+```
+
+This needs the private key `%USERPROFILE%\.tauri\pos-activation.key`. Back it up next to the update key:
+without it no new PC can be activated. Development builds skip activation (set `POS_REQUIRE_ACTIVATION=1`
+to try it).
 
 ## Where data lives
 

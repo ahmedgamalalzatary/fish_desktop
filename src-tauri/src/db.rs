@@ -1,13 +1,23 @@
 use rusqlite::Connection;
 use std::path::Path;
 
-/// Opens the shop's database and brings it up to date with the shop's migrations (`shop::MIGRATIONS`).
+/// Opens the shop's database and brings it up to date with the shop's migrations (`shop::MIGRATIONS`),
+/// copying it to `backups/` first when an update is about to change it.
 /// Whatever the shop, the result holds the shared tables the shared commands use; see
 /// `has_the_shared_tables` below.
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
+    open_with(path, crate::shop::MIGRATIONS)
+}
+
+fn open_with(path: &Path, migrations: &[&str]) -> rusqlite::Result<Connection> {
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA journal_mode = WAL;")?;
-    migrate(&mut conn, crate::shop::MIGRATIONS)?;
+    let version: usize = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    // A database with data that this version is about to change: keep a copy of it as it was.
+    if version > 0 && version < migrations.len() {
+        crate::backup::before_update(&conn, path)?;
+    }
+    migrate(&mut conn, migrations)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     Ok(conn)
 }
@@ -47,6 +57,34 @@ pub fn now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_the_database_before_an_update_but_not_when_new_or_current() {
+        let dir = std::env::temp_dir().join(format!("pos-db-update-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("shop.db");
+        let backups = crate::backup::backups_dir(&path);
+        let first: &[&str] = &["CREATE TABLE a (x); INSERT INTO a VALUES (1);"];
+        let second: &[&str] = &[first[0], "CREATE TABLE b (y);"];
+
+        drop(open_with(&path, first).unwrap());
+        drop(open_with(&path, first).unwrap());
+        assert!(!backups.exists(), "a new or current database is not copied");
+
+        drop(open_with(&path, second).unwrap());
+        let copies: Vec<_> = std::fs::read_dir(&backups).unwrap().collect();
+        assert_eq!(copies.len(), 1);
+        let copy = Connection::open(copies[0].as_ref().unwrap().path()).unwrap();
+        let version: usize = copy
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            version, 1,
+            "the copy is the database as it was before the update"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn migrates_a_fresh_database_and_is_idempotent() {

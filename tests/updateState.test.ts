@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   downloadPercent,
   initialUpdate,
+  installsNow,
   updateReducer,
   updateStatus,
   type UpdateEvent,
@@ -79,5 +80,19 @@ describe("updateStatus", () => {
   test("names the new version, and shows a failure's message", () => {
     expect(updateStatus({ step: "available", version: "0.3.1", notes: "" })).toBe("يتوفر إصدار جديد 0.3.1.");
     expect(updateStatus({ step: "failed", message: "تعذّر" })).toBe("تعذّر");
+  });
+});
+
+describe("installsNow", () => {
+  const available = { step: "available", version: "0.3.1", notes: "" } as const;
+
+  test("an update found before anyone signs in installs right away", () => {
+    expect(installsNow(available, false)).toBe(true);
+  });
+
+  test("never while someone is working, and only once there is an update", () => {
+    expect(installsNow(available, true)).toBe(false);
+    expect(installsNow({ step: "latest" }, false)).toBe(false);
+    expect(installsNow({ step: "failed", message: "x" }, false)).toBe(false);
   });
 });

@@ -23,8 +23,12 @@ export function useUpdater() {
     }
   }, []);
 
+  // One install at a time, even if asked twice (React runs start-up effects twice in development).
+  const installing = useRef(false);
+
   const install = useCallback(async () => {
-    if (!update.current) return;
+    if (!update.current || installing.current) return;
+    installing.current = true;
     dispatch({ type: "download" });
     try {
       await update.current.downloadAndInstall((e) => {
@@ -36,6 +40,7 @@ export function useUpdater() {
     } catch (e) {
       console.error("update install failed", e);
       dispatch({ type: "failed", message: "تعذّر تنزيل التحديث. حاول مرة أخرى." });
+      installing.current = false;
     }
   }, []);
 

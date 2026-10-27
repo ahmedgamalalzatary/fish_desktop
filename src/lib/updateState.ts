@@ -75,3 +75,8 @@ export function updateStatus(state: UpdateState): string {
       return state.message;
   }
 }
+
+/** Install by itself only before anyone signs in, so an update never interrupts work. */
+export function installsNow(state: UpdateState, signedIn: boolean): boolean {
+  return state.step === "available" && !signedIn;
+}

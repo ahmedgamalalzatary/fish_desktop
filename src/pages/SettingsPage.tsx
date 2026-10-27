@@ -216,7 +216,7 @@ function Backup() {
   return (
     <Section
       title="النسخ الاحتياطي"
-      description="كل البيانات محفوظة على هذا الجهاز فقط. احفظ نسخة على فلاشة أو مكان آخر بانتظام."
+      description="يحفظ البرنامج نسخة تلقائية كل يوم ويحتفظ بآخر 7 نسخ، ونسخة قبل كل تحديث، لكنها على نفس الجهاز. احفظ نسخة على فلاشة أو مكان آخر بانتظام."
     >
       <Button tone="outline" onClick={backup}>
         <DatabaseBackup className="size-4" />
@@ -236,7 +236,7 @@ function Updates() {
   return (
     <Section
       title="التحديثات"
-      description="يبحث البرنامج عن إصدار جديد عند فتحه، ويحتاج ذلك اتصالاً بالإنترنت. بياناتك تبقى كما هي بعد التحديث."
+      description="عند فتح البرنامج يُثبَّت أي إصدار جديد وحده قبل تسجيل الدخول، ويحتاج ذلك اتصالاً بالإنترنت. بياناتك تبقى كما هي، وتُحفظ نسخة منها قبل كل تحديث."
     >
       <div className="flex flex-col items-start gap-3">
         {version && <p className="text-sm text-muted">الإصدار الحالي {version}</p>}

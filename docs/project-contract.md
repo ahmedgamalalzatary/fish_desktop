@@ -53,8 +53,9 @@ A build always targets exactly one shop. There is no default shop.
 | Ranges | Today, yesterday, last 7 days, this month, last month, this year, custom |
 | Printing | A4 report documents, 80 mm receipts, print and save-as-PDF |
 | Settings | Shop name/address/phone/currency/footer with live receipt preview |
-| Backup | One-click consistent DB copy (`VACUUM INTO`) |
-| Updates | Signed in-app updater, admin banner, manual check in settings |
+| Backup | One-click consistent DB copy (`VACUUM INTO`); automatic daily copy (newest 7 kept) and a copy before every database update (newest 3 kept), in `backups/` next to the DB |
+| Updates | Signed in-app updater: installs by itself on the screens before sign-in, then restarts; admin banner once signed in; manual check in settings |
+| Activation | One activation code per PC and shop, forever; release builds refuse setup and sign-in until activated |
 | Theme | Role colour/font tokens; each shop supplies values |
 
 ### 2.2 Fish only
@@ -113,10 +114,12 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `vite.config.ts` | React + Tailwind plugins, `@shop` alias from Vite mode, Tauri dev server settings, Vitest include |
 | `shops.ts` | Shop discovery, task command lists, release rules, change filtering (tested) |
 | `scripts/shops.ts` | CLI: list shops, run a task for all/one shop, plan a release |
+| `scripts/activation.ts` | Activation codes: base32, device-code normalizing, Ed25519 signing (tested) |
+| `scripts/activation-code.ts` | CLI: make a PC's activation code; `--new-key` (once) / `--public-key` |
 | `tsconfig.json` | Editor TS project; `@shop` points at `mobile`; strict settings |
 | `tsconfig.fish.json` | `@shop` → fish; checks shared folders + fish + its tests |
 | `tsconfig.mobile.json` | `@shop` → mobile; checks shared folders + mobile + its tests |
-| `tsconfig.node.json` | Composite project for Vite config, scripts and the shops test |
+| `tsconfig.node.json` | Composite project for Vite config, scripts, and the shops and activation tests |
 | `eslint.config.js` | ESLint: ignores dist/src-tauri; TS + React hooks/refresh rules |
 | `index.html` | RTL Arabic document; `#root`; hidden print-only `#print-root` |
 | `.gitignore` | Logs, node_modules, dist, editor files, Playwright, tsbuildinfo |
@@ -132,7 +135,7 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | Path | Purpose |
 | --- | --- |
 | `main.tsx` | Sets document title from the shop; mounts React with `ToastProvider`; imports CSS |
-| `App.tsx` | Startup state (`currentUser` + `needsSetup`), login gate, session, router and role routes |
+| `App.tsx` | Startup state (activation status, `currentUser`, `needsSetup`), activation gate, login gate, session, router and role routes |
 | `index.css` | Imports `@shop/theme.css` then Tailwind |
 | `vite-env.d.ts` | Vite client types |
 | `components/ui.tsx` | Button, Input, Select, Field, Toggle, Segmented, Modal, ConfirmDialog, Keypad, Badge, PageHeader, Empty, Panel |
@@ -143,7 +146,7 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `components/PeriodPicker.tsx` | Preset chips + custom date range |
 | `components/ExportButtons.tsx` | Print and save-as-PDF for a document built on demand |
 | `components/Shell.tsx` | Sidebar navigation, current user, logout, admin update banner |
-| `components/Updates.tsx` | `UpdateBanner` and `InstallButton` |
+| `components/Updates.tsx` | `UpdateBanner`, `InstallButton` and `StartupUpdate` (installs before sign-in) |
 | `lib/api.ts` | Shared typed `invoke` commands and `Range` type |
 | `lib/types.ts` | Shared payload types mirrored from Rust |
 | `lib/shop.ts` | The `Shop`, `Units`, `NavItem`, `ReadoutProps`, `PurchaseForm`, `ReportTab` contracts |
@@ -158,8 +161,9 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `lib/toast.tsx` | Toast context, success/error durations, `errorMessage` |
 | `lib/useResource.ts` | Load-and-reload hook with toast on failure |
 | `lib/cx.ts` | `clsx`-like join with `tailwind-merge` |
-| `lib/updateState.ts` | Updater state machine, percent, status text (tested) |
-| `lib/updater.ts` | `useUpdater`: plugin check/install/relaunch |
+| `lib/updateState.ts` | Updater state machine, percent, status text, `installsNow` (tested) |
+| `lib/updater.ts` | `useUpdater`: plugin check/install/relaunch; one install at a time |
+| `pages/ActivationPage.tsx` | First start on a PC: device code with copy, activation code entry |
 | `pages/LoginPage.tsx` | First-run admin creation or login; shop art and footer |
 | `pages/EmployeesPage.tsx` | User list and form; roles, activity, password |
 | `pages/ExpensesPage.tsx` | Record/filter/delete expenses; totals and print |
@@ -224,12 +228,15 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `shops/fish/tauri.conf.json` | Fish product name, identifier, version, window title, build commands, update endpoint |
 | `shops/mobile/tauri.conf.json` | Same for mobile |
 | `src/main.rs` | Windows subsystem guard; calls `pos_lib::run()` |
-| `src/lib.rs` | Shop module selection, shared command list macro, plugins, DB setup, handler |
-| `src/state.rs` | `SessionUser`, `AppState` with DB and session mutexes; `user()`/`admin()` guards |
+| `src/lib.rs` | Shop module selection, shared command list macro, plugins, DB setup, activation state, daily backup thread, handler |
+| `src/state.rs` | `SessionUser`, `Activation` (device code, active flag, `require`/`activate`), `AppState` with DB and session mutexes; `user()`/`admin()` guards |
 | `src/error.rs` | `AppError`, Arabic messages, serialization, `invalid()` helper |
-| `src/db.rs` | Open/WAL/migrate/foreign-key check, `now()`, shared schema test |
+| `src/db.rs` | Open/WAL/before-update copy/migrate/foreign-key check, `now()`, shared schema test |
+| `src/backup.rs` | Daily and before-update copies into `backups/`, with pruning |
+| `src/activation.rs` | Device code, public key, signature check, saved activation |
 | `src/test_support.rs` | Temp DB and fixture-copy helpers for Rust tests |
 | `src/commands/mod.rs` | Declares the command modules |
+| `src/commands/activation.rs` | `activation_status`, `activate` |
 | `src/commands/auth.rs` | Argon2 hashing, setup, login, logout, current user, password change |
 | `src/commands/users.rs` | User CRUD with uniqueness and last-admin rules |
 | `src/commands/suppliers.rs` | Supplier CRUD, balance SQL, payments, statement |
@@ -275,7 +282,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | --- | --- |
 | `tests/shops.test.ts` | Shop resolution, task commands, release rules, relevant-change filtering |
 | `tests/format.test.ts` | Money/count parsing with Arabic digits, amount formatting, local date |
-| `tests/updateState.test.ts` | Updater reducer, download percent and status text |
+| `tests/updateState.test.ts` | Updater reducer, download percent, status text, install-before-sign-in rule |
+| `tests/activation.test.ts` | Activation-code tool: base32, device-code input, signing, a pinned code the Rust test also accepts |
 | `tests/reportTabs.test.ts` | Shared/shop tab order and filter behavior |
 | `tests/fish/format.test.ts` | kg parsing/formatting, weight pricing parity with Rust |
 | `tests/mobile/format.test.ts` | Arabic phone counting and detail text |
@@ -396,9 +404,10 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
 ### 5.1 Entry, session and routing
 
 - `main.tsx`: `document.title = shop.title`; `<React.StrictMode><ToastProvider><App/></ToastProvider>`.
-- `App.tsx` loads `api.currentUser()` and `api.needsSetup()` in parallel.
+- `App.tsx` loads `api.activationStatus()`, `api.currentUser()` and `api.needsSetup()`.
   - Loading → nothing.
-  - No user → `LoginPage` (`firstRun = needsSetup`).
+  - PC not activated → `ActivationPage` + `StartupUpdate`.
+  - No user → `LoginPage` (`firstRun = needsSetup`) + `StartupUpdate`.
   - Signed in → `SessionProvider` (loads settings; renders nothing until loaded) → `HashRouter` →
     `Shell` → routes.
 - Routes: `/pos` (shop PosPage), `/expenses`. Admin-only: `/reports`, every `shop.adminRoutes` entry,
@@ -406,6 +415,11 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
 - `Shell`: 92 px sidebar. Nav order = sales, expenses, reports, shop nav items, purchases, employees,
   settings. Cashiers see only `cashier: true` items. Header shows the first two words of the shop name.
   Admin sees `<UpdateBanner/>` above the page. Logout is in the sidebar footer.
+- `ActivationPage`: shop art; the device code (selectable, copy button); a box for the activation
+  code (any case, spaces or dashes); errors in an alert box; success goes on to sign-in/setup.
+- `StartupUpdate`: checks once when shown; if an update exists it installs straight away behind a
+  full-screen "جارٍ تحديث البرنامج" overlay with progress, then the app restarts. Offline or failed
+  checks stay silent.
 - `LoginPage`: first run asks name/username/password/confirm and creates the admin (then signs in);
   later runs ask username/password. Errors show in an alert box. Footer: logo, "BIT Technologies",
   current year. The left art comes from the shop.
@@ -425,8 +439,8 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
 | `cx.ts` | Filters falsy, joins, `twMerge` |
 | `document.ts` | `DocumentSection<T>`, `section<T>()` erases the row type for a mixed list |
 | `print.tsx` | Renders into `#print-root`, adds `@page` CSS (A4 or 80 mm), waits `document.fonts.ready`, then prints; PDF asks for a path, measures receipt height (96 dpi) and invokes `export_pdf(path, width, height, margin)` in inches |
-| `updateState.ts` | States: idle, checking, latest, available, downloading (done/total), installing, failed; progress events ignored outside a download; percent capped at 100; Arabic status strings |
-| `updater.ts` | `useUpdater`: `check()` and `downloadAndInstall` with progress, then `relaunch()`; failures map to Arabic messages |
+| `updateState.ts` | States: idle, checking, latest, available, downloading (done/total), installing, failed; progress events ignored outside a download; percent capped at 100; Arabic status strings; `installsNow(state, signedIn)` = an update is available and nobody is signed in |
+| `updater.ts` | `useUpdater`: `check()` and `downloadAndInstall` with progress, then `relaunch()`; failures map to Arabic messages; a second install request while one runs is ignored |
 | purchases.ts | `purchaseColumns`: id, date, supplier, supplier invoice or "—", optional invoice-line count, units total, total, paid-on-receipt total; `supplierReportColumns`: counts, units, purchases, paid, current balance |
 | `expenses.ts` | `expenseColumns` (date, reason, user, total) and `expensesByUser` + columns (count/amount, largest first) |
 | `reportTabs.ts` | `allTabs`: summary, profit, sales, shop "sales" tabs, cashiers, purchases, suppliers, expenses, shop "stock" tabs; `narrowRows` applies the tab filter only when a value is picked |
@@ -453,8 +467,9 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
   optional 4-column figures strip; sections with tables, totals and "no data" text.
 - **PeriodPicker.** Preset chips; custom shows two date inputs constrained to each other.
 - **ExportButtons.** Print and save-as-PDF; both disabled while busy; success toast after a PDF save.
-- **Updates.** Banner shows available/downloading/installing, or a failed install with retry; a failed
-  automatic check on start stays silent.
+- **Updates.** Banner (signed-in admins) shows available/downloading/installing, or a failed install
+  with retry; a failed automatic check on start stays silent. `StartupUpdate` (before sign-in) installs
+  without asking.
 
 ### 5.4 Shared pages — exact behavior
 
@@ -479,8 +494,8 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
   period activity plus current balance. Expenses: detail + per-employee. Shop tabs render intro,
   optional filter select, table, and their columns. Daily chart uses the shop's `--color-chart`.
 - **Settings.** Shop details with a live receipt preview using the shop's `sampleSale`; optional shop
-  section; password change; backup to a chosen `.db`; updates (current version, manual check,
-  install). Save is enabled only when the draft differs.
+  section; password change; backup to a chosen `.db` (the text explains the automatic copies);
+  updates (current version, manual check, install; the text explains installing before sign-in). Save is enabled only when the draft differs.
 
 ### 5.5 Theme tokens
 
@@ -500,16 +515,22 @@ Fish additionally uses `--color-tag` and `--color-tag-deep` in its own component
 ### 6.1 Runtime
 
 - `lib.rs` plugins: dialog, updater, process. Setup creates the app data dir, opens
-  `db::open(dir.join(shop::DB_FILE))`, manages `AppState`.
-- `AppState`: `Mutex<Connection>` + `Mutex<Option<SessionUser>>`; `user()` errors if signed out;
-  `admin()` errors for cashiers.
+  `db::open(dir.join(shop::DB_FILE))`, works out the PC's device code from the app identifier, decides
+  activation (required in release builds; in debug only with `POS_REQUIRE_ACTIVATION` set; active when
+  the saved code is good for this PC), manages `AppState`, then starts the daily backup thread (a copy
+  now, then a look every hour).
+- `AppState`: `Mutex<Connection>` + `Mutex<Option<SessionUser>>` + `Activation`; `user()` errors if
+  signed out; `admin()` errors for cashiers; `activation.require()` errors with
+  "البرنامج غير مفعّل على هذا الجهاز" until activated.
 - One `invoke_handler!` macro lists all shared commands then splices the shop's `shop_commands!`.
 - `AppError` → Arabic string: "يجب تسجيل الدخول أولاً", "ليس لديك صلاحية لهذا الإجراء", "{what} غير موجود",
   the invalid message, "خطأ في قاعدة البيانات: …", or a custom message.
 
 ### 6.2 Database and migrations
 
-- `db::open`: open file, `PRAGMA journal_mode = WAL`, migrate, then `PRAGMA foreign_keys = ON`.
+- `db::open`: open file, `PRAGMA journal_mode = WAL`; when `0 < user_version < migrations` (an update
+  is about to change existing data) copy it to `backups/<stem>-before-update-<YYYY-MM-DD-HHMMSS>.db`
+  (newest 3 kept); migrate; then `PRAGMA foreign_keys = ON`. New and current databases are not copied.
 - `db::migrate`: foreign keys OFF; read `PRAGMA user_version`; apply every migration at index ≥ version
   in its own transaction; run `pragma_foreign_key_check` and reject if any broken reference remains;
   set `user_version = i + 1`; commit.
@@ -521,9 +542,11 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 
 | Command | Args | Guard | Result / effect |
 | --- | --- | --- | --- |
+| `activation_status` | — | none | `{ active, device_code }` |
+| `activate` | code | none | checks the code against this PC's device code, saves it, marks active; wrong code refused |
 | `needs_setup` | — | none | `bool`: no users |
-| `setup_admin` | name, username, password | no users exist | session user; inserts admin; fails if users exist |
-| `login` | username, password | — | session user; active account + Argon2 verify |
+| `setup_admin` | name, username, password | activated; no users exist | session user; inserts admin; fails if users exist |
+| `login` | username, password | activated | session user; active account + Argon2 verify |
 | `logout` | — | — | clears session |
 | `current_user` | — | — | session user or null |
 | `change_password` | current, new_password | signed in | verifies current; new min 4 |
@@ -576,7 +599,8 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 
 ### 6.5 Authorization and lifecycle rules
 
-- Every command is guarded with `state.user()` or `state.admin()`.
+- Every command is guarded with `state.user()` or `state.admin()`; nobody can get a session on a PC
+  that is not activated, because `setup_admin` and `login` require it.
 - Cashiers are forced to their own today's sales and expenses, regardless of sent range/user.
 - Deleting history is avoided: users with sales/movements, suppliers with purchases/payments, fish
   products with history, mobile models with any phone, are archived/deactivated instead.
@@ -593,7 +617,8 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 - `test_support::open_fixture(name)` copies `tests/fixtures/<name>` before opening it.
 - `int()` runs a scalar query; `open_fixture`/`int` are `#[allow(dead_code)]` for shops without fixtures.
 - Tests cover sale splitting/change, stock and negative stock, serial rules, purchase balances,
-  report grouping, role rules, schema and migration behavior.
+  report grouping, role rules, schema and migration behavior, daily/before-update backups and
+  pruning, activation codes (device code, accepting/refusing codes, saved activation, the gate).
 
 ---
 
@@ -917,7 +942,15 @@ Shops add their own columns/tables on top.
   - mobile: `%APPDATA%\com.mobileshop.pos\phones.db`
 - SQLite uses WAL. The backup command deletes the chosen target then runs `VACUUM INTO`, producing a
   standalone consistent copy.
+- Automatic copies, in `backups/` next to the database (same disk): `<stem>-YYYY-MM-DD.db` once a
+  day, newest 7 kept; `<stem>-before-update-YYYY-MM-DD-HHMMSS.db` before an update changes the
+  database, newest 3 kept. Other files there are never touched.
 - Old databases upgrade in place; the fixtures prove the upgrade path.
+- Activation: `activation.txt` in the app data dir holds the PC's activation code. The device code is
+  the first 10 bytes of SHA-256 of `<identifier>:<Windows MachineGuid>`, base32, as `XXXX-XXXX-XXXX-XXXX`.
+  The activation code is the Ed25519 signature of that string, base32 in groups of five, made with
+  `npm run activation-code <device code>` and the private key `%USERPROFILE%\.tauri\pos-activation.key`
+  (public half in `src-tauri/src/activation.rs`). Losing the key means no new PC can be activated.
 
 ---
 
@@ -925,8 +958,8 @@ Shops add their own columns/tables on top.
 
 ### 12.1 npm
 
-Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `check`, `shops`, `format`,
-`format:check`, `tauri` (see the table below).
+Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `check`, `shops`,
+`activation-code`, `format`, `format:check`, `tauri` (see the table below).
 
 | Script | Behavior |
 | --- | --- |
@@ -940,6 +973,7 @@ Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `chec
 | `test:watch <shop>` | `vitest --mode <shop>` in watch mode |
 | `format` / `format:check` | Prettier width 110 + `cargo fmt` |
 | `shops` | `node scripts/shops.ts list` |
+| `activation-code <device code>` | `node scripts/activation-code.ts`: prints the PC's activation code |
 
 Dependencies (current ranges): fonts Alexandria/Readex Pro/IBM Plex Sans Arabic/Lalezar; Tauri API,
 dialog, process, updater; lucide-react 1; React 19; react-router-dom 7; recharts 3; tailwind-merge 3.
@@ -953,7 +987,7 @@ mode's own tests.
 ### 12.2 TypeScript / ESLint / HTML
 
 - `tsconfig`: ES2022, DOM, bundler resolution, strict, no unused locals/parameters, no fallthrough,
-  isolated modules, no emit, react-jsx. Node project is composite and covers Vite/scripts/shops test.
+  isolated modules, no emit, react-jsx. Node project is composite and covers Vite/scripts/shops and activation tests.
 - ESLint ignores `dist` and `src-tauri`; recommended JS + TS; React hooks recommended; React refresh
   warns except for `useSession`, `useToast`, `errorMessage`.
 - `index.html`: `lang="ar" dir="rtl"`, full height; body `select-none bg-page font-sans text-ink
@@ -964,7 +998,7 @@ mode's own tests.
 - Package `pos` edition 2024; lib `pos_lib` (staticlib/cdylib/rlib); features `fish`, `mobile` (no
   default). Release: codegen-units 1, LTO, opt 3, panic abort, strip.
 - Dependencies: tauri 2, dialog 2, serde 1 + derive, serde_json 1, rusqlite 0.32 bundled, argon2 0.5,
-  rand_core 0.6 getrandom, chrono 0.4, updater 2, process 2; Windows: webview2-com 0.39, windows 0.62
+  rand_core 0.6 getrandom, chrono 0.4, updater 2, process 2, ed25519-dalek 2, sha2 0.10, machine-uid 0.5; Windows: webview2-com 0.39, windows 0.62
   (must match wry for PrintToPdf).
 - Base Tauri config: product "POS", version 0.0.0, identifier `com.pos.template`; window 1366×820,
   min 1100×680, centered; CSP `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'
@@ -1004,7 +1038,10 @@ mode's own tests.
 - `tests/format.test.ts` — money parsing to cents, Arabic digits/`٫`/`,`, invalid input, whole counts,
   amount formatting with commas, local date.
 - `tests/updateState.test.ts` — check/found/none/download/progress/finish/failure transitions,
-  progress events ignored outside a download, percent cap, status text.
+  progress events ignored outside a download, percent cap, status text, install only before sign-in.
+- `tests/activation.test.ts` — RFC 4648 base32, device codes however typed and refusal of others,
+  codes in groups of five that verify, and a pinned code for the test key (seed of 32 × `1`) that
+  `src-tauri/src/activation.rs` also accepts.
 - `tests/reportTabs.test.ts` — shop sales tabs after invoices, stock tabs last, shop order preserved;
   filters keep/transform rows; empty value keeps all; no filter keeps all.
 - `tests/shops.test.ts` — folder resolution and rejection of unknown/path modes; sorted shop list;
@@ -1020,7 +1057,7 @@ mode's own tests.
 
 Unit tests sit in the modules they test (sale split/change/short payment, fish weight rounding and
 negative stock, mobile serial/duplicate/sold, purchases/supplier balance, reporting periods, schema,
-migration, roles). Shared tests use `shop::testing` so they never know what a shop sells.
+migration, roles, backups, activation). Shared tests use `shop::testing` so they never know what a shop sells.
 
 ### 13.3 Fixtures
 
@@ -1059,7 +1096,10 @@ have data.
   `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing it permanently blocks
   updates for installed apps.
 - Installed apps check their own `<shop>-updates/latest.json`, verify the signature against the public
-  key in the base config, download, install passively and restart.
+  key in the base config, download, install passively and restart. Before sign-in this happens by
+  itself; once someone is signed in, an admin installs from the banner (or it happens on the next start).
+- Never push a change to `.github/workflows/` while a release runs: GitHub then refuses to create the
+  release (it would need a `workflows` permission the workflow token never has).
 
 ---
 
@@ -1083,7 +1123,13 @@ Use a copy of the shop fixture for upgrade checks and a fresh database for first
     expenses; full report and per-tab print/PDF work.
 11. Employees: add a cashier, deactivate, sign-in refused; cannot delete the last admin.
 12. Settings: rename the shop → sidebar and receipt follow; backup file opens.
-13. Upgrade: a fixture copy opens with sales/suppliers/stock unchanged.
+13. Upgrade: a fixture copy opens with sales/suppliers/stock unchanged, and a
+    `backups/…-before-update-….db` copy of it appears.
+14. Activation (release build, fresh PC data): the device code shows; a wrong code is refused; the code
+    from `npm run activation-code` activates and the app goes on to setup; restarting stays activated.
+15. Daily backup: after start, `backups/<db>-<today>.db` exists and opens.
+16. Update: with an older version installed and a newer release published, opening the app installs it
+    before sign-in and restarts on the new version with the data unchanged.
 
 **Fish only**
 
@@ -1193,6 +1239,9 @@ These are easy to miss and easy to break:
   the file to exist.
 - `tsconfig.node.tsbuildinfo` is generated locally and ignored by git.
 - `docs/` now contains only this contract.
+- Activation is skipped in debug builds unless `POS_REQUIRE_ACTIVATION` is set; release builds always
+  require it. Copying the database or installer to another PC needs that PC's own code.
+- The daily backup thread looks every hour, so a shop left open overnight still gets one a day.
 
 ---
 
@@ -1222,3 +1271,4 @@ These are easy to miss and easy to break:
 - [ ] The touched shop passes `npm run check <shop>`; shared changes pass `npm run check`.
 - [ ] Fixtures still open and match their expected numbers.
 - [ ] A release raises the shop version and keeps its `<shop>-updates` endpoint.
+- [ ] The activation public key in `src-tauri/src/activation.rs` is unchanged (else every activated PC locks).

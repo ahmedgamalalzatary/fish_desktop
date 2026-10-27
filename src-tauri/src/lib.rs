@@ -1,3 +1,5 @@
+mod activation;
+mod backup;
 mod commands;
 mod db;
 mod error;
@@ -10,6 +12,8 @@ mod test_support;
 macro_rules! invoke_handler {
     ($($shop_commands:tt)*) => {
         tauri::generate_handler![
+            commands::activation::activation_status,
+            commands::activation::activate,
             auth::needs_setup,
             auth::setup_admin,
             auth::login,
@@ -75,11 +79,37 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let conn = db::open(&dir.join(shop::DB_FILE))?;
-            app.manage(state::AppState::new(conn));
+            let path = dir.join(shop::DB_FILE);
+            let conn = db::open(&path)?;
+            let device = activation::this_device(&app.config().identifier);
+            // Release builds need activating; `POS_REQUIRE_ACTIVATION=1` tries it in development.
+            let required =
+                !cfg!(debug_assertions) || std::env::var_os("POS_REQUIRE_ACTIVATION").is_some();
+            let active = !required || activation::saved(&dir, &device);
+            app.manage(state::AppState::new(
+                conn,
+                state::Activation::new(dir.clone(), device, active),
+            ));
+            daily_backups(app.handle().clone(), path);
             Ok(())
         })
         .invoke_handler(shop_commands!(invoke_handler))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Today's backup now, then a look every hour, so a shop left open overnight still gets one a day.
+fn daily_backups(app: tauri::AppHandle, path: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        loop {
+            {
+                let state = app.state::<state::AppState>();
+                let db = state.db.lock().unwrap();
+                if let Err(e) = backup::daily(&db, &path, chrono::Local::now().date_naive()) {
+                    eprintln!("daily backup failed: {e}");
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+        }
+    });
 }

@@ -13,5 +13,5 @@
     "tests/*.ts",
     "tests/mobile"
   ],
-  "exclude": ["tests/shops.test.ts"]
+  "exclude": ["tests/shops.test.ts", "tests/activation.test.ts"]
 }
