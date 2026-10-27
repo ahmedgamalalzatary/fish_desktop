@@ -80,7 +80,7 @@ export const api = {
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
   createSale: (phoneIds: number[], payments: PaymentInput[]) =>
-    call<Sale>("create_sale", { phoneIds, payments }),
+    call<Sale>("create_sale", { items: phoneIds, payments }),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),

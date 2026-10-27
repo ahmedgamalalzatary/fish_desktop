@@ -3,6 +3,7 @@ use crate::state::AppState;
 use std::collections::HashMap;
 use tauri::State;
 
+/// Shared settings; the shop adds its own (`shop::SETTINGS_KEYS`).
 const KEYS: &[&str] = &[
     "shop_name",
     "shop_phone",
@@ -26,7 +27,7 @@ pub fn update_settings(state: State<AppState>, values: HashMap<String, String>) 
     let mut db = state.db.lock().unwrap();
     let tx = db.transaction()?;
     for (key, value) in &values {
-        if !KEYS.contains(&key.as_str()) {
+        if !KEYS.contains(&key.as_str()) && !crate::shop::SETTINGS_KEYS.contains(&key.as_str()) {
             return invalid(format!("إعداد غير معروف: {key}"));
         }
         tx.execute(

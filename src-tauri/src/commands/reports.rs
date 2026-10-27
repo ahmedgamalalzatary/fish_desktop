@@ -1,14 +1,16 @@
 use super::suppliers::BALANCE_SQL;
 use crate::error::{AppResult, invalid};
+use crate::shop::reports::{MOVEMENT_UNITS, UNITS_SOLD};
 use crate::state::AppState;
 use rusqlite::{Connection, Params, Row};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use tauri::State;
 
-// All date ranges are inclusive local dates in `YYYY-MM-DD` form.
+// All date ranges are inclusive local dates in `YYYY-MM-DD` form. Units (pieces, grams…) are counted the
+// shop's way: `UNITS_SOLD` for a sale line `i`, `MOVEMENT_UNITS` for a stock movement `m`.
 
-fn query<T, P: Params>(
+pub(crate) fn query<T, P: Params>(
     db: &Connection,
     sql: &str,
     params: P,
@@ -54,14 +56,18 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
     let units_sold: i64 = db.query_row(
-        "SELECT COUNT(*) FROM sale_items i JOIN sales s ON s.id = i.sale_id
-         WHERE date(s.created_at) BETWEEN ?1 AND ?2",
+        &format!(
+            "SELECT COALESCE(SUM({UNITS_SOLD}), 0) FROM sale_items i JOIN sales s ON s.id = i.sale_id
+             WHERE date(s.created_at) BETWEEN ?1 AND ?2"
+        ),
         [&from, &to],
         |r| r.get(0),
     )?;
     let (purchases_cost, purchases_units): (i64, i64) = db.query_row(
-        "SELECT COALESCE(SUM(cost_total), 0), COALESCE(SUM(change_qty), 0) FROM stock_movements
-         WHERE reason = 'purchase' AND date(created_at) BETWEEN ?1 AND ?2",
+        &format!(
+            "SELECT COALESCE(SUM(m.cost_total), 0), COALESCE(SUM({MOVEMENT_UNITS}), 0) FROM stock_movements m
+             WHERE m.reason = 'purchase' AND date(m.created_at) BETWEEN ?1 AND ?2"
+        ),
         [&from, &to],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
@@ -186,15 +192,16 @@ pub fn periods(db: &Connection, from: &str, to: &str, group: &str) -> AppResult<
         |r, count, _| r.sales_count = count,
     )?;
     add(
-        "SELECT strftime(?1, s.created_at) k, SUM(i.price), SUM(i.cost)
-         FROM sale_items i JOIN sales s ON s.id = i.sale_id
-         WHERE date(s.created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        "SELECT strftime(?1, created_at) k, SUM(total), SUM(cost_total) FROM sales
+         WHERE date(created_at) BETWEEN ?2 AND ?3 GROUP BY k",
         |r, revenue, cost| (r.revenue, r.cost) = (revenue, cost),
     )?;
     add(
-        "SELECT strftime(?1, s.created_at) k, COUNT(*), 0
-         FROM sale_items i JOIN sales s ON s.id = i.sale_id
-         WHERE date(s.created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        &format!(
+            "SELECT strftime(?1, s.created_at) k, SUM({UNITS_SOLD}), 0
+             FROM sale_items i JOIN sales s ON s.id = i.sale_id
+             WHERE date(s.created_at) BETWEEN ?2 AND ?3 GROUP BY k"
+        ),
         |r, units, _| r.units_sold = units,
     )?;
     add(
@@ -203,8 +210,11 @@ pub fn periods(db: &Connection, from: &str, to: &str, group: &str) -> AppResult<
         |r, amount, _| r.expenses = amount,
     )?;
     add(
-        "SELECT strftime(?1, created_at) k, COALESCE(SUM(cost_total), 0), SUM(change_qty) FROM stock_movements
-         WHERE reason = 'purchase' AND date(created_at) BETWEEN ?2 AND ?3 GROUP BY k",
+        &format!(
+            "SELECT strftime(?1, m.created_at) k, COALESCE(SUM(m.cost_total), 0), SUM({MOVEMENT_UNITS})
+             FROM stock_movements m
+             WHERE m.reason = 'purchase' AND date(m.created_at) BETWEEN ?2 AND ?3 GROUP BY k"
+        ),
         |r, cost, units| (r.purchases_cost, r.purchases_units) = (cost, units),
     )?;
     Ok(rows
@@ -225,7 +235,7 @@ pub struct PurchasedItemRow {
     cost: i64,
 }
 
-/// What came in from suppliers in the period, per model.
+/// What came in from suppliers in the period, per product.
 #[tauri::command]
 pub fn report_purchased_items(
     state: State<AppState>,
@@ -236,11 +246,13 @@ pub fn report_purchased_items(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT p.id, p.name, COUNT(*), COALESCE(SUM(m.cost_total), 0)
-         FROM stock_movements m
-         JOIN products p ON p.id = m.product_id
-         WHERE m.reason = 'purchase' AND date(m.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.id ORDER BY SUM(m.cost_total) DESC",
+        &format!(
+            "SELECT p.id, p.name, SUM({MOVEMENT_UNITS}), COALESCE(SUM(m.cost_total), 0)
+             FROM stock_movements m
+             JOIN products p ON p.id = m.product_id
+             WHERE m.reason = 'purchase' AND date(m.created_at) BETWEEN ?1 AND ?2
+             GROUP BY p.id ORDER BY SUM(m.cost_total) DESC"
+        ),
         [&from, &to],
         |r| {
             Ok(PurchasedItemRow {
@@ -248,47 +260,6 @@ pub fn report_purchased_items(
                 name: r.get(1)?,
                 units: r.get(2)?,
                 cost: r.get(3)?,
-            })
-        },
-    )
-}
-
-#[derive(Serialize)]
-pub struct ProductRow {
-    product_id: i64,
-    name: String,
-    units: i64,
-    revenue: i64,
-    cost: i64,
-    profit: i64,
-}
-
-#[tauri::command]
-pub fn report_by_product(
-    state: State<AppState>,
-    from: String,
-    to: String,
-) -> AppResult<Vec<ProductRow>> {
-    state.admin()?;
-    let db = state.db.lock().unwrap();
-    query(
-        &db,
-        "SELECT p.id, p.name, COUNT(*), SUM(i.price), SUM(i.cost)
-         FROM sale_items i
-         JOIN sales s ON s.id = i.sale_id
-         JOIN products p ON p.id = i.product_id
-         WHERE date(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.id ORDER BY SUM(i.price) DESC",
-        [&from, &to],
-        |r| {
-            let (revenue, cost): (i64, i64) = (r.get(3)?, r.get(4)?);
-            Ok(ProductRow {
-                product_id: r.get(0)?,
-                name: r.get(1)?,
-                units: r.get(2)?,
-                revenue,
-                cost,
-                profit: revenue - cost,
             })
         },
     )
@@ -335,67 +306,6 @@ pub fn report_by_cashier(
 }
 
 #[derive(Serialize)]
-pub struct MovementRow {
-    id: i64,
-    created_at: String,
-    product_name: String,
-    serial: String,
-    storage: String,
-    color: String,
-    change_qty: i64,
-    reason: String,
-    cost_total: Option<i64>,
-    note: Option<String>,
-    sale_id: Option<i64>,
-    purchase_id: Option<i64>,
-    supplier_name: Option<String>,
-    user_name: String,
-}
-
-#[tauri::command]
-pub fn report_movements(
-    state: State<AppState>,
-    from: String,
-    to: String,
-    reason: Option<String>,
-) -> AppResult<Vec<MovementRow>> {
-    state.admin()?;
-    let db = state.db.lock().unwrap();
-    query(
-        &db,
-        "SELECT m.id, m.created_at, p.name, ph.serial, ph.storage, ph.color, m.change_qty, m.reason, m.cost_total,
-                m.note, m.sale_id, m.purchase_id, s.name, u.name
-         FROM stock_movements m
-         JOIN products p ON p.id = m.product_id
-         JOIN phones ph ON ph.id = m.phone_id
-         JOIN users u ON u.id = m.user_id
-         LEFT JOIN purchases pu ON pu.id = m.purchase_id
-         LEFT JOIN suppliers s ON s.id = pu.supplier_id
-         WHERE date(m.created_at) BETWEEN ?1 AND ?2 AND (?3 IS NULL OR m.reason = ?3)
-         ORDER BY m.id DESC LIMIT 2000",
-        rusqlite::params![from, to, reason],
-        |r| {
-            Ok(MovementRow {
-                id: r.get(0)?,
-                created_at: r.get(1)?,
-                product_name: r.get(2)?,
-                serial: r.get(3)?,
-                storage: r.get(4)?,
-                color: r.get(5)?,
-                change_qty: r.get(6)?,
-                reason: r.get(7)?,
-                cost_total: r.get(8)?,
-                note: r.get(9)?,
-                sale_id: r.get(10)?,
-                purchase_id: r.get(11)?,
-                supplier_name: r.get(12)?,
-                user_name: r.get(13)?,
-            })
-        },
-    )
-}
-
-#[derive(Serialize)]
 pub struct SupplierRow {
     supplier_id: i64,
     name: String,
@@ -421,7 +331,7 @@ pub fn report_by_supplier(
              SELECT s.id, s.name,
                     (SELECT COUNT(*) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2) AS cnt,
                     COALESCE((SELECT SUM(total) FROM purchases p WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0) AS total,
-                    COALESCE((SELECT SUM(m.change_qty) FROM stock_movements m JOIN purchases p ON p.id = m.purchase_id
+                    COALESCE((SELECT SUM({MOVEMENT_UNITS}) FROM stock_movements m JOIN purchases p ON p.id = m.purchase_id
                               WHERE p.supplier_id = s.id AND date(p.created_at) BETWEEN ?1 AND ?2), 0),
                     COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.supplier_id = s.id AND date(sp.created_at) BETWEEN ?1 AND ?2), 0) AS paid,
                     {BALANCE_SQL} AS balance
@@ -445,43 +355,62 @@ pub fn report_by_supplier(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::purchases::{PurchaseInput, insert_purchase};
+    use crate::commands::sales::insert_sale;
+    use crate::shop::testing;
+
+    fn cash(amount: i64) -> Vec<crate::commands::sales::PaymentInput> {
+        serde_json::from_value(serde_json::json!([{ "method": "cash", "amount": amount }])).unwrap()
+    }
 
     #[test]
     fn groups_sales_expenses_and_purchases_by_month() {
-        let path = std::env::temp_dir().join(format!("mobile-pos-per-{}.db", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let db = crate::db::open(&path).unwrap();
-        db.execute_batch(
-            "INSERT INTO users (id, name, username, password_hash, role, created_at) VALUES (1, 'a', 'a', 'x', 'admin', '2026-01-01 00:00:00');
-             INSERT INTO products (id, name, created_at, updated_at) VALUES (1, 'p', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
-             INSERT INTO phones (id, product_id, serial, price, cost, status, created_at) VALUES
-                 (1, 1, 'a', 1000, 700, 'sold', '2026-01-01'), (2, 1, 'b', 1000, 700, 'sold', '2026-01-01'),
-                 (3, 1, 'c', 1000, 700, 'sold', '2026-01-01'), (4, 1, 'd', 1000, 700, 'sold', '2026-01-01');
-             INSERT INTO sales (id, user_id, created_at, total, cost_total, paid, change_due) VALUES
-                 (1, 1, '2026-03-02 10:00:00', 2000, 1400, 2000, 0),
-                 (2, 1, '2026-03-20 10:00:00', 1000, 700, 1000, 0),
-                 (3, 1, '2026-04-01 10:00:00', 1000, 700, 1000, 0);
-             INSERT INTO sale_items (sale_id, phone_id, product_id, product_name, serial, storage, color, price, cost) VALUES
-                 (1, 1, 1, 'p', 'a', '', '', 1000, 700), (1, 2, 1, 'p', 'b', '', '', 1000, 700),
-                 (2, 3, 1, 'p', 'c', '', '', 1000, 700), (3, 4, 1, 'p', 'd', '', '', 1000, 700);
-             INSERT INTO expenses (amount, reason, user_id, created_at) VALUES (250, 'r', 1, '2026-03-05 09:00:00');
-             INSERT INTO stock_movements (phone_id, product_id, change_qty, reason, cost_total, user_id, created_at) VALUES
-                 (1, 1, 1, 'purchase', 3500, 1, '2026-02-27 09:00:00'), (2, 1, 1, 'purchase', 3500, 1, '2026-02-27 09:00:00');",
+        let (mut db, path) = crate::test_support::temp_db("periods");
+        db.execute(
+            "INSERT INTO suppliers (id, name, created_at) VALUES (1, 'مورد', '2026-01-01 00:00:00')",
+            [],
         )
         .unwrap();
+        // February: an invoice of two items costing 3,500 each.
+        let invoice = PurchaseInput {
+            supplier_id: 1,
+            invoice_no: String::new(),
+            note: String::new(),
+            paid: 0,
+            items: testing::lines_costing(&db, &[3_500, 3_500]),
+        };
+        insert_purchase(&mut db, 1, &invoice).unwrap();
+        // March: two sales, the first of two items; April: one sale. Each item sells for 1,000, cost 700.
+        for items in [2, 1, 1] {
+            let cart = testing::cart_worth(&db, &vec![(1_000, 700); items]);
+            insert_sale(&mut db, 1, &cart, &cash(1_000 * items as i64)).unwrap();
+        }
+        db.execute_batch(
+            "UPDATE purchases SET created_at = '2026-02-27 09:00:00';
+             UPDATE stock_movements SET created_at = '2026-02-27 09:00:00' WHERE reason = 'purchase';
+             UPDATE sales SET created_at = CASE id WHEN 1 THEN '2026-03-02 10:00:00'
+                                                   WHEN 2 THEN '2026-03-20 10:00:00'
+                                                   ELSE '2026-04-01 10:00:00' END;
+             INSERT INTO expenses (amount, reason, user_id, created_at) VALUES (250, 'r', 1, '2026-03-05 09:00:00');",
+        )
+        .unwrap();
+
         let rows = periods(&db, "2026-01-01", "2026-12-31", "month").unwrap();
         let months: Vec<_> = rows.iter().map(|r| r.period.as_str()).collect();
         assert_eq!(months, ["2026-02", "2026-03", "2026-04"]);
         let march = &rows[1];
         assert_eq!(
             (march.sales_count, march.units_sold, march.revenue),
-            (2, 3, 3000)
+            (2, 3 * testing::ITEM_UNITS, 3_000)
         );
         assert_eq!(
             (march.profit, march.expenses, march.net_profit),
             (900, 250, 650)
         );
-        assert_eq!((rows[0].purchases_units, rows[0].purchases_cost), (2, 7000));
+        assert_eq!(
+            (rows[0].purchases_units, rows[0].purchases_cost),
+            (2 * testing::ITEM_UNITS, 7_000)
+        );
         assert!(periods(&db, "2026-01-01", "2026-12-31", "week").is_err());
         drop(db);
         let _ = std::fs::remove_file(&path);

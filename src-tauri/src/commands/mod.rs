@@ -1,8 +1,6 @@
 pub mod auth;
 pub mod expenses;
 pub mod pdf;
-pub mod phones;
-pub mod products;
 pub mod purchases;
 pub mod reports;
 pub mod sales;

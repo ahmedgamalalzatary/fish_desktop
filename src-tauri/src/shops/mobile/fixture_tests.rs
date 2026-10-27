@@ -3,26 +3,11 @@
 //! release's own commands; the expected numbers below are worked out by hand from that seed scenario
 //! (see `tests/fixtures/README.md`).
 
-use rusqlite::Connection;
-use std::path::PathBuf;
-
-/// Opens a copy, so the committed fixture is never migrated in place.
-fn open_copy(name: &str) -> (Connection, PathBuf) {
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../tests/fixtures")
-        .join(name);
-    let copy = std::env::temp_dir().join(format!("pos-fixture-{}-{name}", std::process::id()));
-    std::fs::copy(&fixture, &copy).unwrap_or_else(|e| panic!("missing fixture {fixture:?}: {e}"));
-    (crate::db::open(&copy).unwrap(), copy)
-}
-
-fn int(db: &Connection, sql: &str) -> i64 {
-    db.query_row(sql, [], |r| r.get(0)).unwrap()
-}
+use crate::test_support::{int, open_fixture};
 
 #[test]
 fn mobile_0_4_0_database_keeps_its_history() {
-    let (db, path) = open_copy("mobile-0.4.0.db");
+    let (db, path) = open_fixture("mobile-0.4.0.db");
 
     // Sales: 30,000.00 + 29,000.00 + 18,000.00, bought for 26,000.00 + 25,000.00 + 14,000.00.
     assert_eq!(int(&db, "SELECT COUNT(*) FROM sales"), 3);

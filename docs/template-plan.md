@@ -84,20 +84,24 @@ How a build picks a shop (no extra tools needed, works on Windows):
 
 ### Rust: `src-tauri/src/shops/<shop>/mod.rs` exports
 
-| Item                                                                                                       | Used by              | Fish                      | Mobile                 |
-| ---------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------- | ---------------------- |
-| `DB_FILE: &str`                                                                                            | `lib.rs`             | `"fish-pos.db"`           | `"phones.db"`          |
-| `MIGRATIONS: &[Migration]`                                                                                 | `db::open`           | legacy 1–2 + new ones     | legacy 1 + new ones    |
-| `SETTINGS_KEYS: &[&str]` (extra keys)                                                                      | `settings.rs`        | `allow_negative_stock`    | none                   |
-| `type CartInput` / `price_cart()` / `write_sale_lines()`                                                   | `sales.rs`           | weight + variants, grams  | phone ids              |
-| `type SaleItem` / `load_sale_items()`                                                                      | `sales.rs` (receipt) | name, label, grams, price | name, serial, storage… |
-| `type PurchaseLinesInput` / `write_purchase_lines()` / `load_purchase_items()` / `purchase_delete_guard()` | `purchases.rs`       | grams per product         | one row per phone      |
-| `UNITS_SOLD_SQL`, `PURCHASED_UNITS_SQL` fragments                                                          | `reports.rs`         | `SUM(weight_grams)`       | `COUNT(*)`             |
-| `shop_commands!` list of shop-only commands                                                                | `lib.rs` handler     | categories, stock, …      | phones, …              |
+| Item                                                                  | Used by                 | Fish                      | Mobile                  |
+| --------------------------------------------------------------------- | ----------------------- | ------------------------- | ----------------------- |
+| `DB_FILE: &str`                                                       | `lib.rs`                | `"fish-pos.db"`           | `"phones.db"`           |
+| `MIGRATIONS: &[&str]`                                                 | `db::open`              | legacy 1–2 + new ones     | legacy 1 + new ones     |
+| `SETTINGS_KEYS: &[&str]` (extra keys)                                 | `settings.rs`           | `allow_negative_stock`    | none                    |
+| `sales::{Cart, Priced { total, cost }, price(), record()}`            | `commands/sales.rs`     | weight + variants, grams  | phone ids               |
+| `sales::{SaleItem, load_items()}`                                     | receipt                 | name, label, grams, price | name, serial, storage…  |
+| `purchases::{Lines, total(), record(), PurchaseItem, load_items()}`   | `commands/purchases.rs` | grams per product         | one row per phone       |
+| `purchases::{ITEMS_COUNT_SQL, remove()}`                              | purchases list, delete  | lines on the invoice      | phones, refused if sold |
+| `reports::{UNITS_SOLD, MOVEMENT_UNITS}` (SQL over `i` / `m`)          | `commands/reports.rs`   | `i.weight_grams`, grams   | `1`, `m.change_qty`     |
+| `shop_commands!` (its own commands)                                   | `lib.rs`                | categories, stock, …      | models, phones, reports |
+| `testing::{ITEM_UNITS, cart_worth(), lines_costing(), stock_units()}` | shared tests            | grams                     | phones                  |
 
-`Migration` is `struct Migration { id: &'static str, sql: &'static str }`. Shared tables live in
-`db.rs` as named constants (`core::EXPENSES`, `core::SALE_PAYMENTS`, …). A test asserts that every shop's
-list contains every required core migration id, so nobody forgets to add a shared table to a shop.
+Migrations stay a plain ordered list per shop, so released ones are never renumbered. What the shared
+commands need from any shop's schema is pinned by `db::tests::has_the_shared_tables` (users, settings,
+suppliers, purchases, supplier payments, sales, sale payments, sale items, products, stock movements,
+expenses), so a shop that forgets a shared table fails its tests. The shared tests never touch a shop's
+own tables; they get stock to sell and lines to buy from `shop::testing`.
 
 ### TypeScript: `src/shops/<shop>/index.ts` exports
 
@@ -216,7 +220,7 @@ from `build:mobile` installs over 0.4.0 and keeps data.
 
 ### Slice 3a — Migrations framework
 
-- `db.rs`: `Migration { id, sql }`, `open(path, migrations)`, the mobile `migrate()` logic kept as is.
+- `db.rs`: `open(path)` runs `shop::MIGRATIONS` with the mobile `migrate()` logic kept as is.
 - Shared table SQL as constants. For mobile, the existing single migration stays **byte-for-byte** as
   `mobile:001_initial` (it already contains the shared tables); later shared tables are appended.
 - Test: every shop list contains all required core ids; a fresh DB migrates; **a copy of
@@ -230,10 +234,9 @@ from `build:mobile` installs over 0.4.0 and keeps data.
 
 - `sales.rs` keeps: `PaymentInput`, `Payment`, `settle()`, sale header insert, `sale_payments`,
   `get_sale`, `list_sales`, all payment tests.
-- Shop provides: `CartInput`, `price_cart(tx, &cart) -> Priced { total, cost, lines }`,
-  `write_sale_lines(tx, sale_id, user_id, ts, &priced)` (lines + stock + movements), `SaleItem`,
-  `load_sale_items()`.
-- `create_sale(items: shop::CartInput, payments)`. Phone tests move to `shops/mobile/`.
+- Shop provides: `Cart`, `price(tx, &cart) -> Priced { total, cost, .. }`,
+  `record(tx, sale_id, user_id, ts, &priced)` (lines + stock + movements), `SaleItem`, `load_items()`.
+- `create_sale(items: shop::Cart, payments)`. Phone tests move to `shops/mobile/`.
 
 ### Slice 3d — Purchases
 
@@ -244,7 +247,7 @@ from `build:mobile` installs over 0.4.0 and keeps data.
 ### Slice 3e — Reports
 
 - Shared: summary (money parts), daily, periods/profit, cashiers, suppliers, expenses. Units come from
-  `shop::UNITS_SOLD_SQL` / `PURCHASED_UNITS_SQL`.
+  `shop::reports::UNITS_SOLD` / `MOVEMENT_UNITS`.
 - Shop-only: `report_by_product`, `report_movements` (+ fish later: `report_by_category`).
 
 ### Slice 3f — Commands registration
@@ -307,7 +310,7 @@ the profit report.
   lines (`price_for_grams`, `allow_negative_stock`), purchase lines in grams, product/category/movement
   reports. Put them in `src-tauri/src/shops/fish/` behind the shop interface.
 - Fish keeps its own sale-item columns (`quantity`, `weight_grams`, `unit_price`, `line_total`,
-  `line_cost`); shared reports read money from `sales` and units from `UNITS_SOLD_SQL`.
+  `line_cost`); shared reports read money from `sales` and units from `UNITS_SOLD`.
 
 ### Slice 5b — Fish migrations (the dangerous part)
 
