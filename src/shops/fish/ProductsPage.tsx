@@ -15,8 +15,8 @@ import {
   Toggle,
 } from "../../components/ui";
 import { api } from "./api";
-import { formatAmount, parseMoney } from "../../lib/format";
-import { formatWeight, gramsToKg, parseKg } from "./format";
+import { parseMoney } from "../../lib/format";
+import { formatGramPrice, formatWeight, parseGramPrice, parseGrams } from "./format";
 import { useSession } from "../../lib/session";
 import { errorMessage, useToast } from "../../lib/toast";
 import { useResource } from "../../lib/useResource";
@@ -85,20 +85,20 @@ export function ProductsPage() {
       header: "طريقة البيع",
       cell: (p) => (
         <div className="flex flex-wrap gap-1">
-          {p.sell_by_weight && <Badge>بالكيلو</Badge>}
+          {p.sell_by_weight && <Badge>بالجرام</Badge>}
           {p.variants.length > 0 && <Badge>{p.variants.length} أوزان جاهزة</Badge>}
         </div>
       ),
     },
     {
-      header: "سعر الكيلو",
+      header: "سعر الجرام",
       numeric: true,
-      cell: (p) => (p.sell_by_weight ? formatAmount(p.price_per_kg) : "—"),
+      cell: (p) => (p.sell_by_weight ? formatGramPrice(p.price_per_gram) : "—"),
     },
     {
-      header: "تكلفة الكيلو",
+      header: "تكلفة الجرام",
       numeric: true,
-      cell: (p) => <span className="text-muted">{formatAmount(p.cost_per_kg)}</span>,
+      cell: (p) => <span className="text-muted">{formatGramPrice(p.cost_per_gram)}</span>,
     },
     {
       header: "المخزون",
@@ -207,12 +207,14 @@ export function ProductsPage() {
 interface VariantDraft {
   id: number | null;
   label: string;
-  kg: string;
+  grams: string;
   price: string;
   cost: string;
 }
 
 const money = (cents: number) => (cents ? String(cents / 100) : "");
+const gramPrice = (milli: number) => (milli ? String(milli / 100_000) : "");
+const count = (n: number) => (n ? String(n) : "");
 
 function ProductForm({
   product,
@@ -230,17 +232,15 @@ function ProductForm({
   const [name, setName] = useState(product?.name ?? "");
   const [categoryId, setCategoryId] = useState<number | null>(product?.category_id ?? null);
   const [sellByWeight, setSellByWeight] = useState(product?.sell_by_weight ?? true);
-  const [pricePerKg, setPricePerKg] = useState(money(product?.price_per_kg ?? 0));
-  const [costPerKg, setCostPerKg] = useState(money(product?.cost_per_kg ?? 0));
-  const [lowStock, setLowStock] = useState(
-    product ? gramsToKg(product.low_stock_grams).replace(/\.?0+$/, "") : "",
-  );
+  const [pricePerGram, setPricePerGram] = useState(gramPrice(product?.price_per_gram ?? 0));
+  const [costPerGram, setCostPerGram] = useState(gramPrice(product?.cost_per_gram ?? 0));
+  const [lowStock, setLowStock] = useState(count(product?.low_stock_grams ?? 0));
   const [openingStock, setOpeningStock] = useState("");
   const [variants, setVariants] = useState<VariantDraft[]>(
     product?.variants.map((v) => ({
       id: v.id,
       label: v.label,
-      kg: gramsToKg(v.weight_grams).replace(/\.?0+$/, ""),
+      grams: count(v.weight_grams),
       price: money(v.price),
       cost: money(v.cost),
     })) ?? [],
@@ -255,7 +255,7 @@ function ProductForm({
     const parsedVariants = variants.map((v) => ({
       id: v.id,
       label: v.label,
-      weight_grams: parseKg(v.kg) ?? 0,
+      weight_grams: parseGrams(v.grams) ?? 0,
       price: parseMoney(v.price) ?? 0,
       cost: parseMoney(v.cost || "0") ?? 0,
     }));
@@ -263,12 +263,12 @@ function ProductForm({
       name,
       category_id: categoryId,
       sell_by_weight: sellByWeight,
-      price_per_kg: parseMoney(pricePerKg || "0") ?? -1,
-      cost_per_kg: parseMoney(costPerKg || "0") ?? -1,
-      low_stock_grams: parseKg(lowStock || "0") ?? -1,
+      price_per_gram: parseGramPrice(pricePerGram || "0") ?? -1,
+      cost_per_gram: parseGramPrice(costPerGram || "0") ?? -1,
+      low_stock_grams: parseGrams(lowStock || "0") ?? -1,
       variants: parsedVariants,
     };
-    const opening = parseKg(openingStock || "0");
+    const opening = parseGrams(openingStock || "0");
     if (opening === null) return toast("المخزون الافتتاحي غير صحيح", "error");
 
     setBusy(true);
@@ -337,39 +337,39 @@ function ProductForm({
           <Toggle
             checked={sellByWeight}
             onChange={setSellByWeight}
-            label="البيع بالكيلو"
+            label="البيع بالجرام"
             description="يكتب الكاشير الوزن، ويُحسب السعر تلقائياً."
           />
           <div className="mt-4 grid grid-cols-3 gap-4">
-            <Field label={`سعر بيع الكيلو (${settings.currency})`}>
+            <Field label={`سعر بيع الجرام (${settings.currency})`} hint="مثال: 0.25">
               {(id) => (
                 <Input
                   id={id}
                   dir="ltr"
                   inputMode="decimal"
-                  value={pricePerKg}
-                  onChange={(e) => setPricePerKg(e.target.value)}
+                  value={pricePerGram}
+                  onChange={(e) => setPricePerGram(e.target.value)}
                   disabled={!sellByWeight}
                 />
               )}
             </Field>
-            <Field label={`تكلفة الكيلو (${settings.currency})`} hint="تُستخدم لحساب الربح.">
+            <Field label={`تكلفة الجرام (${settings.currency})`} hint="تُستخدم لحساب الربح.">
               {(id) => (
                 <Input
                   id={id}
                   dir="ltr"
                   inputMode="decimal"
-                  value={costPerKg}
-                  onChange={(e) => setCostPerKg(e.target.value)}
+                  value={costPerGram}
+                  onChange={(e) => setCostPerGram(e.target.value)}
                 />
               )}
             </Field>
-            <Field label="تنبيه نقص المخزون (كجم)" hint="يظهر التنبيه عند الوصول لهذه الكمية.">
+            <Field label="تنبيه نقص المخزون (جم)" hint="يظهر التنبيه عند الوصول لهذه الكمية.">
               {(id) => (
                 <Input
                   id={id}
                   dir="ltr"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   value={lowStock}
                   onChange={(e) => setLowStock(e.target.value)}
                 />
@@ -383,14 +383,14 @@ function ProductForm({
             <div>
               <div className="text-sm font-medium">أوزان جاهزة</div>
               <div className="text-xs text-muted">
-                مثل: ربع كيلو، نصف كيلو، علبة 1 كيلو. لكل وزن سعره الخاص، ويُخصم وزنه من المخزون.
+                مثل: علبة 250 جم، علبة 500 جم، علبة 1000 جم. لكل وزن سعره الخاص، ويُخصم وزنه من المخزون.
               </div>
             </div>
             <Button
               tone="outline"
               size="sm"
               onClick={() =>
-                setVariants((vs) => [...vs, { id: null, label: "", kg: "", price: "", cost: "" }])
+                setVariants((vs) => [...vs, { id: null, label: "", grams: "", price: "", cost: "" }])
               }
             >
               <Plus className="size-4" />
@@ -401,7 +401,7 @@ function ProductForm({
             <div className="mt-4 flex flex-col gap-2">
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 text-xs text-muted">
                 <span>الاسم</span>
-                <span>الوزن (كجم)</span>
+                <span>الوزن (جم)</span>
                 <span>سعر البيع</span>
                 <span>التكلفة</span>
                 <span className="w-9" />
@@ -411,16 +411,16 @@ function ProductForm({
                   <Input
                     value={v.label}
                     onChange={(e) => updateVariant(i, { label: e.target.value })}
-                    placeholder="نصف كيلو"
+                    placeholder="علبة 500 جم"
                     aria-label="اسم الوزن"
                   />
                   <Input
                     dir="ltr"
-                    inputMode="decimal"
-                    value={v.kg}
-                    onChange={(e) => updateVariant(i, { kg: e.target.value })}
-                    placeholder="0.5"
-                    aria-label="الوزن بالكيلو"
+                    inputMode="numeric"
+                    value={v.grams}
+                    onChange={(e) => updateVariant(i, { grams: e.target.value })}
+                    placeholder="500"
+                    aria-label="الوزن بالجرام"
                   />
                   <Input
                     dir="ltr"
@@ -452,7 +452,7 @@ function ProductForm({
 
         {!product && (
           <Field
-            label="المخزون الافتتاحي (كجم)"
+            label="المخزون الافتتاحي (جم)"
             hint="الكمية الموجودة الآن. يمكنك إضافة الكميات الجديدة لاحقاً من صفحة المخزون."
             className="w-64"
           >
@@ -460,7 +460,7 @@ function ProductForm({
               <Input
                 id={id}
                 dir="ltr"
-                inputMode="decimal"
+                inputMode="numeric"
                 value={openingStock}
                 onChange={(e) => setOpeningStock(e.target.value)}
               />

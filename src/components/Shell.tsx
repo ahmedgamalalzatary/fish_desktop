@@ -22,6 +22,7 @@ export function Shell({ children }: { children: ReactNode }) {
     { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
     { to: "/reports", label: "التقارير", icon: ChartColumnBig },
     ...shop.navItems,
+    { to: "/extras", label: shop.extras.title, icon: shop.extras.icon },
     { to: "/purchases", label: "المشتريات", icon: Truck },
     { to: "/employees", label: "الموظفون", icon: UsersRound },
     { to: "/settings", label: "الإعدادات", icon: Settings },

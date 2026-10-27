@@ -20,6 +20,7 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { section } from "../lib/document";
+import { extraPurchaseColumns, useExtraPurchaseLines } from "../lib/extrasTicket";
 import { formatAmount, formatDateTime, formatMoney, isoDate, parseMoney } from "../lib/format";
 import { purchaseColumns } from "../lib/purchases";
 import { useSession } from "../lib/session";
@@ -362,21 +363,28 @@ export function PurchaseFormModal({
   const [invoiceNo, setInvoiceNo] = useState("");
   const [note, setNote] = useState("");
   const lines = shop.usePurchaseLines(productId);
+  const extraLines = useExtraPurchaseLines();
   const [payInFull, setPayInFull] = useState(true);
   const [paidText, setPaidText] = useState("");
   const [busy, setBusy] = useState(false);
 
   const activeSuppliers = (suppliers ?? []).filter((s) => s.active);
-  const total = lines.total;
+  const total = lines.total + extraLines.total;
+  const count = [!lines.empty && lines.count, !extraLines.empty && extraLines.count]
+    .filter(Boolean)
+    .join(" + ");
   const paid = payInFull ? total : parseMoney(paidText || "0");
   const remaining = paid === null ? null : total - paid;
   const supplier = activeSuppliers.find((s) => String(s.id) === supplierId);
 
   const save = async () => {
     if (!supplierId || (supplierId === "new" && !newSupplier.trim())) return toast("اختر المورد", "error");
+    if (lines.empty && extraLines.empty) return toast("أضف صنفاً واحداً على الأقل", "error");
     const read = lines.read();
     if ("error" in read) return toast(read.error, "error");
     const { items } = read;
+    const readExtras = extraLines.read();
+    if ("error" in readExtras) return toast(readExtras.error, "error");
     if (paid === null || paid > total)
       return toast("المبلغ المدفوع يجب ألا يزيد عن إجمالي الفاتورة", "error");
 
@@ -402,8 +410,9 @@ export function PurchaseFormModal({
         note,
         paid,
         items,
+        extras: readExtras.lines,
       });
-      toast(`حُفظت فاتورة الشراء #${purchaseId} وأُضيف ${lines.count} إلى المخزون`);
+      toast(`حُفظت فاتورة الشراء #${purchaseId} وأُضيف ${count} إلى المخزون`);
       onSaved();
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -475,6 +484,7 @@ export function PurchaseFormModal({
         </div>
 
         {lines.editor}
+        {extraLines.editor}
 
         <div className="grid grid-cols-[1fr_17rem] items-start gap-6">
           <div className="flex flex-col gap-4">
@@ -516,7 +526,7 @@ export function PurchaseFormModal({
           </div>
           <div className="flex flex-col gap-2">
             <shop.Readout
-              label={`إجمالي الفاتورة · ${lines.count}`}
+              label={`إجمالي الفاتورة · ${count || lines.count}`}
               value={formatAmount(total)}
               unit={settings.currency}
               size="md"
@@ -571,10 +581,10 @@ function purchaseDocument(p: Purchase, settings: ReturnType<typeof useSession>["
         { label: "ملاحظة", value: p.note || "—" },
       ]}
       sections={[
-        section({
-          columns: shop.purchaseItemColumns(p),
-          rows: p.items,
-        }),
+        ...(p.items.length ? [section({ columns: shop.purchaseItemColumns(p), rows: p.items })] : []),
+        ...(p.extras.length
+          ? [section({ title: shop.extras.title, columns: extraPurchaseColumns(p), rows: p.extras })]
+          : []),
       ]}
     />
   );
@@ -648,13 +658,27 @@ export function PurchaseDetailModal({
         />
       </dl>
       {purchase.note && <p className="mb-4 text-sm text-ink-2">{purchase.note}</p>}
-      <Panel className="overflow-hidden">
-        <DataTable
-          columns={shop.purchaseItemColumns(purchase)}
-          rows={purchase.items}
-          rowKey={(i) => purchase.items.indexOf(i)}
-        />
-      </Panel>
+      {purchase.items.length > 0 && (
+        <Panel className="overflow-hidden">
+          <DataTable
+            columns={shop.purchaseItemColumns(purchase)}
+            rows={purchase.items}
+            rowKey={(i) => purchase.items.indexOf(i)}
+          />
+        </Panel>
+      )}
+      {purchase.extras.length > 0 && (
+        <>
+          <h3 className="mt-5 mb-2 font-semibold">{shop.extras.title}</h3>
+          <Panel className="overflow-hidden">
+            <DataTable
+              columns={extraPurchaseColumns(purchase)}
+              rows={purchase.extras}
+              rowKey={(x) => purchase.extras.indexOf(x)}
+            />
+          </Panel>
+        </>
+      )}
     </Modal>
   );
 }

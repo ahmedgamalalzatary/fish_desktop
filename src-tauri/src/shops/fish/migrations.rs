@@ -190,4 +190,13 @@ CREATE TABLE expenses (
 
 CREATE INDEX idx_expenses_created ON expenses(created_at);
 "#,
+    // 5. Weights and prices are in grams. A price per gram is kept in thousandths of a cent, so the old
+    //    prices per kilo (in cents) are already the same numbers: 90.00 a kilo is 0.09 a gram, nothing rounds.
+    //    Sale lines sold by weight keep their unit price the same way.
+    r#"
+ALTER TABLE products RENAME COLUMN price_per_kg TO price_per_gram;
+ALTER TABLE products RENAME COLUMN cost_per_kg TO cost_per_gram;
+"#,
+    // 6. Add-ons (salad, juice, water…), sold by the piece on the same sale.
+    crate::commands::extras::MIGRATION,
 ];

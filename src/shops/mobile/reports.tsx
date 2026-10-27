@@ -18,7 +18,7 @@ export const reportTabs = [
     inFullReport: "المنتجات",
     load: (range) => api.reportByProduct(range),
     rowKey: (r) => r.product_id,
-    columns: (rows, s) => [
+    columns: (rows) => [
       { header: "الموديل", cell: (r) => r.name },
       {
         header: "الأجهزة المباعة",
@@ -30,19 +30,19 @@ export const reportTabs = [
         header: "المبيعات",
         numeric: true,
         cell: (r) => formatAmount(r.revenue),
-        total: formatAmount(s.revenue),
+        total: formatAmount(sum(rows, (r) => r.revenue)),
       },
       {
         header: "التكلفة",
         numeric: true,
         cell: (r) => formatAmount(r.cost),
-        total: formatAmount(s.cost),
+        total: formatAmount(sum(rows, (r) => r.cost)),
       },
       {
         header: "الربح",
         numeric: true,
         cell: (r) => formatAmount(r.profit),
-        total: formatAmount(s.profit),
+        total: formatAmount(sum(rows, (r) => r.profit)),
       },
       {
         header: "الهامش",

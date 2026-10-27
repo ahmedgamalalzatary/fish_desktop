@@ -14,7 +14,7 @@ pub struct PurchaseItemInput {
 
 #[derive(Deserialize)]
 pub struct Lines {
-    /// Set each product's cost per kg from this invoice.
+    /// Set each product's cost per gram from this invoice.
     pub update_cost: bool,
     pub lines: Vec<PurchaseItemInput>,
 }
@@ -23,18 +23,20 @@ pub struct Lines {
 pub const ITEMS_COUNT_SQL: &str =
     "(SELECT COUNT(*) FROM stock_movements m WHERE m.purchase_id = p.id)";
 
+/// Whether the invoice has none of the shop's lines (it may still have extras).
+pub fn is_empty(lines: &Lines) -> bool {
+    lines.lines.is_empty()
+}
+
 /// The invoice total: what was paid for its lines.
 pub fn total(lines: &Lines) -> AppResult<i64> {
-    if lines.lines.is_empty() {
-        return invalid("أضف صنفاً واحداً على الأقل");
-    }
     if lines.lines.iter().any(|i| i.grams <= 0 || i.cost_total < 0) {
         return invalid("أدخل وزناً وتكلفة صحيحين لكل صنف");
     }
     Ok(lines.lines.iter().map(|i| i.cost_total).sum())
 }
 
-/// Adds every line to stock, and to the product's cost per kg when asked.
+/// Adds every line to stock, and sets the product's cost per gram (thousandths of a cent) when asked.
 pub fn record(
     tx: &Connection,
     purchase_id: i64,
@@ -56,10 +58,10 @@ pub fn record(
             return Err(AppError::NotFound("المنتج"));
         }
         if lines.update_cost && item.cost_total > 0 {
-            let per_kg = (item.cost_total as f64 * 1000.0 / item.grams as f64).round() as i64;
+            let per_gram = (item.cost_total as f64 * 1000.0 / item.grams as f64).round() as i64;
             tx.execute(
-                "UPDATE products SET cost_per_kg = ?1 WHERE id = ?2",
-                params![per_kg, item.product_id],
+                "UPDATE products SET cost_per_gram = ?1 WHERE id = ?2",
+                params![per_gram, item.product_id],
             )?;
         }
     }
@@ -112,11 +114,11 @@ mod tests {
     use crate::test_support::{int, temp_db};
 
     #[test]
-    fn an_invoice_can_set_the_cost_per_kg() {
+    fn an_invoice_can_set_the_cost_per_gram() {
         let (mut db, path) = temp_db("fish-purchase-cost");
         db.execute_batch(
             "INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');
-             INSERT INTO products (id, name, category_id, cost_per_kg, stock_grams, created_at, updated_at)
+             INSERT INTO products (id, name, category_id, cost_per_gram, stock_grams, created_at, updated_at)
                  VALUES (1, 'بلطي', 1, 5000, 1000, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
              INSERT INTO suppliers (id, name, created_at) VALUES (1, 'مورد', '2026-01-01 00:00:00');",
         )
@@ -134,16 +136,17 @@ mod tests {
                     cost_total: 24000,
                 }],
             },
+            extras: vec![],
         };
         insert_purchase(&mut db, 1, &invoice(false)).unwrap();
         assert_eq!(
-            int(&db, "SELECT cost_per_kg FROM products WHERE id = 1"),
+            int(&db, "SELECT cost_per_gram FROM products WHERE id = 1"),
             5000
         );
         insert_purchase(&mut db, 1, &invoice(true)).unwrap();
-        // 240.00 for 4 kg is 60.00 a kilo.
+        // 240.00 for 4,000 g is 0.06 a gram.
         assert_eq!(
-            int(&db, "SELECT cost_per_kg FROM products WHERE id = 1"),
+            int(&db, "SELECT cost_per_gram FROM products WHERE id = 1"),
             6000
         );
         assert_eq!(

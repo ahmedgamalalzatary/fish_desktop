@@ -1,6 +1,7 @@
 pub mod activation;
 pub mod auth;
 pub mod expenses;
+pub mod extras;
 pub mod pdf;
 pub mod purchases;
 pub mod reports;

@@ -8,7 +8,22 @@ use crate::test_support::{int, open_fixture};
 #[test]
 fn fish_0_2_0_database_keeps_its_history() {
     let (db, path) = open_fixture("fish-0.2.0.db");
-    assert_eq!(int(&db, "PRAGMA user_version"), 4);
+    assert_eq!(
+        int(&db, "PRAGMA user_version"),
+        super::MIGRATIONS.len() as i64
+    );
+
+    // Prices per kilo became prices per gram, in thousandths of a cent: the same numbers, so 90.00 a kilo
+    // is 0.09 a gram and nothing is rounded.
+    let prices = |id: i64| {
+        int(
+            &db,
+            &format!(
+                "SELECT price_per_gram * 1000000 + cost_per_gram FROM products WHERE id = {id}"
+            ),
+        )
+    };
+    assert_eq!((prices(1), prices(2)), (9_000_006_000, 30_000_022_000));
 
     // Sales: 135.00 + 310.00 + 475.00 + 1,000.00, bought for 90.00 + 220.00 + 345.00 + 720.00.
     assert_eq!(int(&db, "SELECT COUNT(*) FROM sales"), 4);

@@ -37,8 +37,8 @@ export interface Units {
   product: string;
   /** Header for the average buy price of `per` units: "متوسط سعر الجهاز". */
   perUnit: string;
-  /** How many units `perUnit` prices: 1 phone, or 1000 g for a price per kilo. */
-  per: number;
+  /** The average price of one unit, for `perUnit`, from what `units` of them cost. */
+  unitPrice: (cost: number, units: number) => string;
   /** Header for how many lines an invoice has ("الأصناف"), for shops where that is not the units. */
   invoiceLines?: string;
   /** A quantity in a table cell. */
@@ -54,6 +54,8 @@ export interface PurchaseForm {
   total: number;
   /** What the filled-in lines add up to, in words: "3 أجهزة". */
   count: string;
+  /** No line is filled in; `read` then gives no lines, for an invoice of extras only. */
+  empty: boolean;
   /** The lines to send, or why they cannot be sent yet. */
   read: () => { items: PurchaseLines } | { error: string };
 }
@@ -87,6 +89,21 @@ export interface ReportTab<T> {
 /** Lets a shop list tabs of different row types together. */
 export const reportTab = <T>(tab: ReportTab<T>) => tab as unknown as ReportTab<unknown>;
 
+/** What the shop calls the things it sells by the piece next to its own goods (see src/lib/extras.ts). */
+export interface ExtrasNames {
+  /** The page, tab and sidebar title: "الإضافات". */
+  title: string;
+  /** One of them, in a sentence or a table header: "إضافة". */
+  one: string;
+  /** The add button: "إضافة جديدة". */
+  newOne: string;
+  icon: LucideIcon;
+  /** Example categories, for the empty page: "«مشروبات» و«سلطات»". */
+  categoriesExample: string;
+  /** Example name in the item form: "عصير برتقال". */
+  nameExample: string;
+}
+
 export interface Shop {
   /** Window and document title. */
   title: string;
@@ -102,7 +119,8 @@ export interface Shop {
   /** The item lines of a receipt. */
   ReceiptItems: ComponentType<{ items: SaleItem[] }>;
   /** The made-up sale the receipt preview in the settings shows. */
-  sampleSale: Pick<Sale, "items" | "total" | "payments" | "paid" | "change_due">;
+  sampleSale: Pick<Sale, "items" | "extras" | "total" | "payments" | "paid" | "change_due">;
+  extras: ExtrasNames;
   units: Units;
   /** The line rows of the purchase invoice form; a hook, called once per form. `productId` pre-fills
    *  the first line where the shop supports it. */

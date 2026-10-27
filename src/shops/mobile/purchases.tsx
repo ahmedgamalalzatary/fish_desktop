@@ -18,7 +18,7 @@ export function usePurchaseLines(): PurchaseForm {
   const filled = drafts.filter((d) => !isBlank(d));
 
   const read = () => {
-    if (filled.length === 0) return { error: "أضف جهازاً واحداً على الأقل" };
+    if (filled.length === 0) return { items: [] };
     if (repeatedSerials(filled).size > 0) return { error: "رقم تسلسلي مكرر في الفاتورة" };
     const items: PurchaseLines = [];
     for (const d of filled) {
@@ -39,6 +39,7 @@ export function usePurchaseLines(): PurchaseForm {
       ),
     total: filled.reduce((s, d) => s + (parseMoney(d.cost) ?? 0), 0),
     count: formatPhones(filled.length),
+    empty: filled.length === 0,
     read,
   };
 }
@@ -55,7 +56,7 @@ export function purchaseItemColumns(p: Purchase): Column<PurchaseItem>[] {
       header: "سعر الشراء",
       numeric: true,
       cell: (i) => formatAmount(i.cost),
-      total: formatAmount(p.total),
+      total: formatAmount(p.items.reduce((s, i) => s + i.cost, 0)),
     },
   ];
 }

@@ -9,7 +9,7 @@ import { useResource } from "../../lib/useResource";
 import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Panel, Segmented } from "../../components/ui";
 import { api } from "./api";
 import { formatAmount, formatMoney, isoDate } from "../../lib/format";
-import { formatWeight, gramsToKg, parseKg } from "./format";
+import { formatWeight, parseGrams } from "./format";
 import { useSession } from "../../lib/session";
 import { errorMessage, useToast } from "../../lib/toast";
 import { PurchaseFormModal } from "../../pages/PurchasesPage";
@@ -182,9 +182,9 @@ function AdjustModal({
   onSaved: () => void;
 }) {
   const toast = useToast();
-  const [kg, setKg] = useState(gramsToKg(Math.max(product.stock_grams, 0)));
+  const [text, setText] = useState(String(Math.max(product.stock_grams, 0)));
   const [note, setNote] = useState("");
-  const grams = parseKg(kg);
+  const grams = parseGrams(text);
   const diff = grams === null ? null : grams - product.stock_grams;
 
   const save = async () => {
@@ -224,7 +224,7 @@ function AdjustModal({
           اكتب الكمية الموجودة فعلاً بعد الوزن. يُسجَّل الفرق في حركة المخزون (هالك، تالف، أو خطأ سابق).
         </p>
         <Field
-          label="الكمية الفعلية (كجم)"
+          label="الكمية الفعلية (جم)"
           hint={
             diff !== null && diff !== 0
               ? `${diff > 0 ? "زيادة" : "نقص"} ${formatWeight(Math.abs(diff))} عن المسجّل (${formatWeight(product.stock_grams)})`
@@ -232,7 +232,13 @@ function AdjustModal({
           }
         >
           {(id) => (
-            <Input id={id} dir="ltr" inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} />
+            <Input
+              id={id}
+              dir="ltr"
+              inputMode="numeric"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
           )}
         </Field>
         <Field label="السبب">

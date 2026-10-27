@@ -1,5 +1,6 @@
 import type { Cart } from "@shop/types";
 import { invoke } from "@tauri-apps/api/core";
+import type { ExtraLine } from "./extras";
 import type {
   CashierReportRow,
   DailyRow,
@@ -68,7 +69,8 @@ export const api = {
   getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
-  createSale: (items: Cart, payments: PaymentInput[]) => call<Sale>("create_sale", { items, payments }),
+  createSale: (items: Cart, extras: ExtraLine[], payments: PaymentInput[]) =>
+    call<Sale>("create_sale", { items, extras, payments }),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),

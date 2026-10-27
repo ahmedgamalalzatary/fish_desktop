@@ -19,6 +19,25 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
       </div>
 
       <shop.ReceiptItems items={sale.items} />
+      {sale.extras.length > 0 && (
+        <table className="w-full">
+          <tbody>
+            {sale.extras.map((x, i) => (
+              <tr key={i} className="align-top">
+                <td className="py-1">
+                  <div className="font-semibold">{x.name}</div>
+                  <div className="text-[11px]">
+                    {x.quantity} × {formatAmount(x.unit_price)}
+                  </div>
+                </td>
+                <td className="py-1 text-end font-semibold whitespace-nowrap">
+                  {formatAmount(x.line_total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       <div className="mt-1 border-t border-dashed border-black pt-1">
         <div className="flex justify-between text-base font-bold">

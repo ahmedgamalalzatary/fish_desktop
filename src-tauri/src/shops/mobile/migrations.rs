@@ -2,7 +2,8 @@
 //! Never edit an existing entry once released — append a new one instead.
 //! (The phone-per-serial version started over with a new database file, `phones.db`.)
 
-pub const MIGRATIONS: &[&str] = &[r#"
+pub const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE users (
     id            INTEGER PRIMARY KEY,
     name          TEXT NOT NULL,
@@ -157,4 +158,7 @@ CREATE INDEX idx_purchases_created ON purchases(created_at);
 CREATE INDEX idx_purchases_supplier ON purchases(supplier_id);
 CREATE INDEX idx_payments_supplier ON supplier_payments(supplier_id);
 CREATE INDEX idx_expenses_created ON expenses(created_at);
-"#];
+"#,
+    // 2. Accessories (covers, screen protectors…), sold by the piece on the same sale.
+    crate::commands::extras::MIGRATION,
+];

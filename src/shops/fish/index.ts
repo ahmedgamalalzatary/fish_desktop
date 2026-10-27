@@ -1,7 +1,7 @@
-import { FolderTree, Package, Warehouse } from "lucide-react";
+import { CupSoda, FolderTree, Package, Warehouse } from "lucide-react";
 import type { Shop } from "../../lib/shop";
 import { CategoriesPage } from "./CategoriesPage";
-import { formatWeight } from "./format";
+import { formatGramPrice, formatWeight, perGram } from "./format";
 import { LoginArt } from "./LoginArt";
 import { PosPage } from "./PosPage";
 import { ProductsPage } from "./ProductsPage";
@@ -40,23 +40,32 @@ export const shop: Shop = {
       },
       {
         product_name: "جمبري",
-        variant_label: "نصف كيلو",
+        variant_label: "علبة 500 جم",
         quantity: 1,
         weight_grams: 500,
         unit_price: 13000,
         line_total: 13000,
       },
     ],
-    total: 26500,
-    payments: [{ method: "cash", amount: 26500 }],
+    extras: [{ name: "سلطة خضراء", quantity: 2, unit_price: 1500, line_total: 3000 }],
+    total: 29500,
+    payments: [{ method: "cash", amount: 29500 }],
     paid: 30000,
-    change_due: 3500,
+    change_due: 500,
+  },
+  extras: {
+    title: "الإضافات",
+    one: "إضافة",
+    newOne: "إضافة جديدة",
+    icon: CupSoda,
+    categoriesExample: "«مشروبات» و«سلطات»، وتحت «مشروبات»: «عصير» و«مياه»",
+    nameExample: "عصير برتقال",
   },
   units: {
     noun: "الكمية",
     product: "الصنف",
-    perUnit: "متوسط سعر الكيلو",
-    per: 1000,
+    perUnit: "متوسط سعر الجرام",
+    unitPrice: (cost, units) => formatGramPrice(perGram(cost, units)),
     invoiceLines: "الأصناف",
     format: formatWeight,
     count: formatWeight,

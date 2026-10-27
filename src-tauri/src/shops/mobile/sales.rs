@@ -39,9 +39,6 @@ pub struct Priced {
 
 /// Prices always come from the database, never from the client.
 pub fn price(tx: &Connection, phone_ids: &Cart) -> AppResult<Priced> {
-    if phone_ids.is_empty() {
-        return invalid("السلة فارغة");
-    }
     let mut lines = Vec::with_capacity(phone_ids.len());
     for (i, id) in phone_ids.iter().enumerate() {
         if phone_ids[..i].contains(id) {
@@ -162,7 +159,7 @@ mod tests {
     #[test]
     fn sale_takes_the_phones_out_and_snapshots_them() {
         let (mut db, path) = setup("mobile-sale");
-        let id = insert_sale(&mut db, 1, &vec![1, 2], &cash(6500000)).unwrap();
+        let id = insert_sale(&mut db, 1, &vec![1, 2], &[], &cash(6500000)).unwrap();
         assert_eq!(
             (status(&db, 1), status(&db, 2)),
             ("sold".into(), "sold".into())
@@ -176,7 +173,7 @@ mod tests {
         assert_eq!(total, 6500000);
 
         // A sold phone cannot be sold again.
-        assert!(insert_sale(&mut db, 1, &vec![1], &cash(3000000)).is_err());
+        assert!(insert_sale(&mut db, 1, &vec![1], &[], &cash(3000000)).is_err());
         drop(db);
         let _ = std::fs::remove_file(&path);
     }
@@ -184,7 +181,7 @@ mod tests {
     #[test]
     fn rejects_the_same_phone_twice_in_one_sale() {
         let (mut db, path) = setup("mobile-sale-twice");
-        assert!(insert_sale(&mut db, 1, &vec![1, 1], &cash(6000000)).is_err());
+        assert!(insert_sale(&mut db, 1, &vec![1, 1], &[], &cash(6000000)).is_err());
         assert_eq!(status(&db, 1), "in_stock");
         drop(db);
         let _ = std::fs::remove_file(&path);

@@ -50,17 +50,14 @@ pub struct Priced {
     needed: HashMap<i64, i64>,
 }
 
-/// Price for a weight, rounded to the nearest cent.
-fn price_for_grams(per_kg: i64, grams: i64) -> i64 {
-    (per_kg * grams + 500) / 1000
+/// Price for a weight, rounded to the nearest cent. `per_gram` is in thousandths of a cent.
+fn price_for_grams(per_gram: i64, grams: i64) -> i64 {
+    (per_gram * grams + 500) / 1000
 }
 
 /// Prices always come from the database, never from the client. Refuses to sell more than is in stock
 /// unless the shop allows it (`allow_negative_stock`).
 pub fn price(tx: &Connection, items: &Cart) -> AppResult<Priced> {
-    if items.is_empty() {
-        return invalid("السلة فارغة");
-    }
     let allow_negative = tx
         .query_row(
             "SELECT value FROM settings WHERE key = 'allow_negative_stock'",
@@ -73,9 +70,9 @@ pub fn price(tx: &Connection, items: &Cart) -> AppResult<Priced> {
     let mut lines = Vec::with_capacity(items.len());
     let mut needed: HashMap<i64, i64> = HashMap::new();
     for item in items {
-        let (name, sell_by_weight, price_per_kg, cost_per_kg): (String, bool, i64, i64) = tx
+        let (name, sell_by_weight, price_per_gram, cost_per_gram): (String, bool, i64, i64) = tx
             .query_row(
-                "SELECT name, sell_by_weight, price_per_kg, cost_per_kg FROM products WHERE id = ?1 AND active = 1",
+                "SELECT name, sell_by_weight, price_per_gram, cost_per_gram FROM products WHERE id = ?1 AND active = 1",
                 [item.product_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
@@ -110,7 +107,7 @@ pub fn price(tx: &Connection, items: &Cart) -> AppResult<Priced> {
             }
             None => {
                 if !sell_by_weight {
-                    return invalid(format!("المنتج «{name}» لا يُباع بالكيلو"));
+                    return invalid(format!("المنتج «{name}» لا يُباع بالوزن"));
                 }
                 let grams = item
                     .weight_grams
@@ -123,9 +120,9 @@ pub fn price(tx: &Connection, items: &Cart) -> AppResult<Priced> {
                     label: None,
                     quantity: 1,
                     grams,
-                    unit_price: price_per_kg,
-                    line_total: price_for_grams(price_per_kg, grams),
-                    line_cost: price_for_grams(cost_per_kg, grams),
+                    unit_price: price_per_gram,
+                    line_total: price_for_grams(price_per_gram, grams),
+                    line_cost: price_for_grams(cost_per_gram, grams),
                 }
             }
         };
@@ -142,9 +139,7 @@ pub fn price(tx: &Connection, items: &Cart) -> AppResult<Priced> {
             )?;
             if stock < *grams {
                 return invalid(format!(
-                    "المخزون غير كافٍ من «{name}»: المتوفر {:.3} كجم والمطلوب {:.3} كجم",
-                    stock as f64 / 1000.0,
-                    *grams as f64 / 1000.0
+                    "المخزون غير كافٍ من «{name}»: المتوفر {stock} جم والمطلوب {grams} جم"
                 ));
             }
         }
@@ -232,29 +227,29 @@ mod tests {
         let (mut db, path) = temp_db("fish-sale");
         db.execute_batch(
             "INSERT INTO categories (id, name, created_at) VALUES (1, 'c', '2026-01-01 00:00:00');
-             INSERT INTO products (id, name, category_id, price_per_kg, cost_per_kg, stock_grams, created_at, updated_at)
+             INSERT INTO products (id, name, category_id, price_per_gram, cost_per_gram, stock_grams, created_at, updated_at)
                  VALUES (1, 'بلطي', 1, 9000, 6000, 2000, '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
         )
         .unwrap();
-        // 1.5 kg at 90.00/kg = 135.00.
+        // 1,500 g at 0.09 a gram = 135.00.
         let weighed = cart(
             serde_json::json!([{ "product_id": 1, "variant_id": null, "quantity": 1, "weight_grams": 1500 }]),
         );
-        insert_sale(&mut db, 1, &weighed, &cash(13_500)).unwrap();
+        insert_sale(&mut db, 1, &weighed, &[], &cash(13_500)).unwrap();
         assert_eq!(
             int(&db, "SELECT stock_grams FROM products WHERE id = 1"),
             500
         );
         assert_eq!(int(&db, "SELECT SUM(line_cost) FROM sale_items"), 9_000);
 
-        // Another 1.5 kg with 0.5 kg left: refused, then allowed by the setting.
-        assert!(insert_sale(&mut db, 1, &weighed, &cash(13_500)).is_err());
+        // Another 1,500 g with 500 g left: refused, then allowed by the setting.
+        assert!(insert_sale(&mut db, 1, &weighed, &[], &cash(13_500)).is_err());
         db.execute(
             "UPDATE settings SET value = '1' WHERE key = 'allow_negative_stock'",
             [],
         )
         .unwrap();
-        insert_sale(&mut db, 1, &weighed, &cash(13_500)).unwrap();
+        insert_sale(&mut db, 1, &weighed, &[], &cash(13_500)).unwrap();
         assert_eq!(
             int(&db, "SELECT stock_grams FROM products WHERE id = 1"),
             -1_000

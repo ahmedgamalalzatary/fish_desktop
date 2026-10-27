@@ -2,6 +2,7 @@
 // shop's (src/shops/<shop>/types.ts), reached through `@shop`.
 
 import type { PurchaseItem, PurchaseLines, SaleItem } from "@shop/types";
+import type { ExtraPurchaseLine, PurchaseExtra, SaleExtra } from "./extras";
 
 export type Role = "admin" | "cashier";
 export type PaymentMethod = "cash" | "card" | "wallet";
@@ -49,6 +50,8 @@ export interface Sale {
   paid: number;
   change_due: number;
   items: SaleItem[];
+  /** Add-ons or accessories sold with the shop's lines. */
+  extras: SaleExtra[];
 }
 
 export interface SaleSummary {
@@ -161,6 +164,7 @@ export interface PurchaseInput {
   note: string;
   paid: number;
   items: PurchaseLines;
+  extras: ExtraPurchaseLine[];
 }
 
 export interface PurchaseSummary {
@@ -182,6 +186,7 @@ export interface PurchaseSummary {
 export interface Purchase extends PurchaseSummary {
   note: string;
   items: PurchaseItem[];
+  extras: PurchaseExtra[];
 }
 
 export interface StatementRow {

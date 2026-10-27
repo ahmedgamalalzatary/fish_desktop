@@ -8,13 +8,13 @@ import type { PurchaseForm } from "../../lib/shop";
 import type { Purchase } from "../../lib/types";
 import { useResource } from "../../lib/useResource";
 import { api } from "./api";
-import { formatWeight, parseKg } from "./format";
+import { formatGramPrice, formatWeight, parseGrams, perGram } from "./format";
 import type { Product, PurchaseItem } from "./types";
 
 interface Line {
   key: number;
   productId: string;
-  kg: string;
+  grams: string;
   cost: string;
 }
 
@@ -22,7 +22,7 @@ let lineKey = 0;
 const newLine = (productId = ""): Line => ({
   key: ++lineKey,
   productId,
-  kg: "",
+  grams: "",
   cost: "",
 });
 
@@ -45,7 +45,7 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
     return [...map.entries()];
   }, [products]);
 
-  const parsed = lines.map((l) => ({ grams: parseKg(l.kg), cost: parseMoney(l.cost || "0") }));
+  const parsed = lines.map((l) => ({ grams: parseGrams(l.grams), cost: parseMoney(l.cost || "0") }));
   const total = parsed.reduce((s, l) => s + (l.cost ?? 0), 0);
   const grams = parsed.reduce((s, l) => s + (l.grams ?? 0), 0);
   const setLine = (key: number, patch: Partial<Line>) =>
@@ -54,8 +54,8 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
   const read = () => {
     const filled = lines
       .map((l, i) => ({ l, ...parsed[i] }))
-      .filter(({ l }) => l.productId || l.kg || l.cost);
-    if (filled.length === 0) return { error: "أضف صنفاً واحداً على الأقل" };
+      .filter(({ l }) => l.productId || l.grams || l.cost);
+    if (filled.length === 0) return { items: { update_cost: updateCost, lines: [] } };
     if (filled.some(({ l, grams, cost }) => !l.productId || !grams || cost === null))
       return { error: "أكمل المنتج والوزن والتكلفة لكل صنف" };
     return {
@@ -75,15 +75,15 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
       <div className="rounded-xl border border-line bg-white">
         <div className="grid grid-cols-[1fr_8rem_9rem_8rem_2.25rem] gap-3 border-b border-line px-4 py-2.5 text-sm font-medium text-muted">
           <span>المنتج</span>
-          <span>الوزن (كجم)</span>
+          <span>الوزن (جم)</span>
           <span>التكلفة ({settings.currency})</span>
-          <span className="text-end">تكلفة الكيلو</span>
+          <span className="text-end">تكلفة الجرام</span>
           <span />
         </div>
         {lines.map((l, i) => {
           const { grams, cost } = parsed[i];
           const product = byId.get(l.productId);
-          const perKg = grams && cost ? Math.round((cost * 1000) / grams) : null;
+          const unitCost = grams && cost ? perGram(cost, grams) : null;
           return (
             <div
               key={l.key}
@@ -109,11 +109,11 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
               </Select>
               <Input
                 dir="ltr"
-                inputMode="decimal"
-                value={l.kg}
-                onChange={(e) => setLine(l.key, { kg: e.target.value })}
-                aria-label="الوزن"
-                className={l.kg && !grams ? "border-danger" : undefined}
+                inputMode="numeric"
+                value={l.grams}
+                onChange={(e) => setLine(l.key, { grams: e.target.value })}
+                aria-label="الوزن بالجرام"
+                className={l.grams && !grams ? "border-danger" : undefined}
               />
               <Input
                 dir="ltr"
@@ -124,10 +124,10 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
                 className={l.cost && cost === null ? "border-danger" : undefined}
               />
               <div className="text-end text-sm leading-5">
-                <div className="font-medium">{perKg !== null ? formatAmount(perKg) : "—"}</div>
+                <div className="font-medium">{unitCost !== null ? formatGramPrice(unitCost) : "—"}</div>
                 {product && (
-                  <div className="text-xs text-muted" title="تكلفة الكيلو المسجّلة حالياً">
-                    الحالية {formatAmount(product.cost_per_kg)}
+                  <div className="text-xs text-muted" title="تكلفة الجرام المسجّلة حالياً">
+                    الحالية {formatGramPrice(product.cost_per_gram)}
                   </div>
                 )}
               </div>
@@ -154,13 +154,14 @@ export function usePurchaseLines(productId?: number): PurchaseForm {
       <Toggle
         checked={updateCost}
         onChange={setUpdateCost}
-        label="تحديث تكلفة الكيلو للمنتجات"
-        description="تصبح تكلفة كل منتج هي تكلفة الكيلو في هذه الفاتورة، فيُحسب الربح بالسعر الجديد."
+        label="تحديث تكلفة الجرام للمنتجات"
+        description="تصبح تكلفة كل منتج هي تكلفة الجرام في هذه الفاتورة، فيُحسب الربح بالسعر الجديد."
       />
     </div>
   );
 
-  return { editor, total, count: formatWeight(grams), read };
+  const empty = lines.every((l) => !l.productId && !l.grams && !l.cost);
+  return { editor, total, count: formatWeight(grams), empty, read };
 }
 
 export function purchaseItemColumns(p: Purchase): Column<PurchaseItem>[] {
@@ -173,15 +174,15 @@ export function purchaseItemColumns(p: Purchase): Column<PurchaseItem>[] {
       total: formatWeight(p.units),
     },
     {
-      header: "تكلفة الكيلو",
+      header: "تكلفة الجرام",
       numeric: true,
-      cell: (i) => formatAmount(Math.round((i.cost_total * 1000) / i.grams)),
+      cell: (i) => formatGramPrice(perGram(i.cost_total, i.grams)),
     },
     {
       header: "التكلفة",
       numeric: true,
       cell: (i) => formatAmount(i.cost_total),
-      total: formatAmount(p.total),
+      total: formatAmount(p.items.reduce((s, i) => s + i.cost_total, 0)),
     },
   ];
 }

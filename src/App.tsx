@@ -9,6 +9,7 @@ import type { SessionUser } from "./lib/types";
 import { ActivationPage } from "./pages/ActivationPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
+import { ExtrasPage } from "./pages/ExtrasPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -63,6 +64,7 @@ export default function App() {
                 {shop.adminRoutes.map(({ path, Page }) => (
                   <Route key={path} path={path} element={<Page />} />
                 ))}
+                <Route path="/extras" element={<ExtrasPage />} />
                 <Route path="/purchases" element={<PurchasesPage />} />
                 <Route path="/employees" element={<EmployeesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

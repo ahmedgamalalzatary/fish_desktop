@@ -1,3 +1,4 @@
+use super::extras::{self, ExtraPurchaseLine, PurchaseExtra};
 use super::suppliers::insert_payment;
 use crate::db::now;
 use crate::error::{AppError, AppResult, invalid};
@@ -16,12 +17,18 @@ pub struct PurchaseInput {
     pub(crate) paid: i64,
     /// The shop's invoice lines.
     pub(crate) items: shop::Lines,
+    /// Counted add-ons or accessories on the same invoice.
+    #[serde(default)]
+    pub(crate) extras: Vec<ExtraPurchaseLine>,
 }
 
-/// Records a supplier invoice: the shop adds its lines to stock, and the unpaid part goes on the
-/// supplier's balance.
+/// Records a supplier invoice: the shop adds its lines to stock, the extras theirs, and the unpaid
+/// part goes on the supplier's balance.
 pub fn insert_purchase(db: &mut Connection, user_id: i64, input: &PurchaseInput) -> AppResult<i64> {
-    let total = shop::total(&input.items)?;
+    if shop::is_empty(&input.items) && input.extras.is_empty() {
+        return invalid("أضف صنفاً واحداً على الأقل");
+    }
+    let total = shop::total(&input.items)? + extras::purchase_total(&input.extras)?;
     if input.paid < 0 || input.paid > total {
         return invalid("المبلغ المدفوع يجب ألا يزيد عن إجمالي الفاتورة");
     }
@@ -47,6 +54,7 @@ pub fn insert_purchase(db: &mut Connection, user_id: i64, input: &PurchaseInput)
     )?;
     let purchase_id = tx.last_insert_rowid();
     shop::record(&tx, purchase_id, user_id, &ts, &input.items)?;
+    extras::record_purchase(&tx, purchase_id, user_id, &ts, &input.extras)?;
 
     if input.paid > 0 {
         insert_payment(
@@ -89,7 +97,7 @@ pub struct PurchaseSummary {
 fn summary_sql() -> String {
     format!(
         "SELECT p.id, p.created_at, s.id, s.name, p.invoice_no,
-            {},
+            {} + {},
             COALESCE((SELECT SUM({}) FROM stock_movements m WHERE m.purchase_id = p.id AND m.reason = 'purchase'), 0),
             p.total,
             COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.purchase_id = p.id), 0),
@@ -98,6 +106,7 @@ fn summary_sql() -> String {
         JOIN suppliers s ON s.id = p.supplier_id
         JOIN users u ON u.id = p.user_id",
         shop::ITEMS_COUNT_SQL,
+        extras::ITEMS_COUNT_SQL,
         crate::shop::reports::MOVEMENT_UNITS
     )
 }
@@ -142,6 +151,7 @@ pub struct Purchase {
     summary: PurchaseSummary,
     note: String,
     items: Vec<shop::PurchaseItem>,
+    extras: Vec<PurchaseExtra>,
 }
 
 #[tauri::command]
@@ -163,6 +173,7 @@ pub fn get_purchase(state: State<AppState>, id: i64) -> AppResult<Purchase> {
         summary,
         note,
         items: shop::load_items(&db, id)?,
+        extras: extras::load_purchase_extras(&db, id)?,
     })
 }
 
@@ -171,6 +182,7 @@ pub fn get_purchase(state: State<AppState>, id: i64) -> AppResult<Purchase> {
 pub fn remove_purchase(db: &mut Connection, id: i64) -> AppResult<()> {
     let tx = db.transaction()?;
     shop::remove(&tx, id)?;
+    extras::remove_purchase(&tx, id)?;
     tx.execute("DELETE FROM supplier_payments WHERE purchase_id = ?1", [id])?;
     if tx.execute("DELETE FROM purchases WHERE id = ?1", [id])? == 0 {
         return Err(AppError::NotFound("فاتورة الشراء"));
@@ -220,6 +232,7 @@ mod tests {
             note: String::new(),
             paid,
             items: testing::lines_costing(db, &[1_600_000; 4]),
+            extras: vec![],
         }
     }
 

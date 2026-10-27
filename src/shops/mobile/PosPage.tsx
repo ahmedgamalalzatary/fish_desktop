@@ -1,7 +1,9 @@
 import { Receipt as ReceiptIcon, Search, Trash2, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { CheckoutModal, PaymentPicker, ReceiptModal, TodaySalesModal } from "../../components/Checkout";
-import { Button, Empty, Modal } from "../../components/ui";
+import { ExtraTicketLines, ExtrasCatalog } from "../../components/Extras";
+import { useExtrasTicket } from "../../lib/extrasTicket";
+import { Button, Empty, Modal, Segmented } from "../../components/ui";
 import { cx } from "../../lib/cx";
 import { formatAmount, formatMoney } from "../../lib/format";
 import { useSession } from "../../lib/session";
@@ -9,6 +11,7 @@ import { useToast } from "../../lib/toast";
 import type { PaymentMethod, Sale } from "../../lib/types";
 import { useResource } from "../../lib/useResource";
 import { api } from "./api";
+import { shop } from "./index";
 import { formatPhones, phoneDetails } from "./format";
 import { Readout } from "./Readout";
 import type { Phone, Product } from "./types";
@@ -32,7 +35,9 @@ export function PosPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [showToday, setShowToday] = useState(false);
+  const [shelf, setShelf] = useState<"phones" | "extras">("phones");
   const searchRef = useRef<HTMLInputElement>(null);
+  const extras = useExtrasTicket(false);
 
   const [data, load] = useResource(useCallback(() => api.listProducts(), []));
   const products = useMemo(() => data ?? [], [data]);
@@ -55,7 +60,15 @@ export function PosPage() {
       .sort((a, b) => Number(b.phones.length > 0) - Number(a.phones.length > 0));
   }, [products, query, brand]);
 
-  const total = cart.reduce((sum, l) => sum + l.phone.price, 0);
+  const total = cart.reduce((sum, l) => sum + l.phone.price, 0) + extras.total;
+  const pieces = extras.lines.reduce((n, l) => n + l.quantity, 0);
+  const empty = cart.length === 0 && pieces === 0;
+  const ticketCount = [
+    cart.length > 0 && formatPhones(cart.length),
+    pieces > 0 && `${pieces} ${shop.extras.one}`,
+  ]
+    .filter(Boolean)
+    .join(" + ");
 
   const add = (product: Product, phone: Phone) => {
     if (!inCart.has(phone.id)) setCart((c) => [...c, { product, phone }]);
@@ -66,7 +79,7 @@ export function PosPage() {
   /** Enter in the search box: a scanned serial goes straight to the cart, a single model opens its phones. */
   const searchEnter = () => {
     const q = query.trim().toLowerCase();
-    if (!q) return;
+    if (!q || shelf === "extras") return;
     for (const p of products) {
       const phone = p.phones.find((x) => x.serial.toLowerCase() === q);
       if (phone) {
@@ -82,8 +95,10 @@ export function PosPage() {
   const finishSale = (sale: Sale) => {
     setCheckingOut(false);
     setCart([]);
+    extras.clear();
     setLastSale(sale);
     load();
+    extras.reload();
   };
 
   return (
@@ -100,7 +115,11 @@ export function PosPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchEnter())}
-                placeholder="امسح الرقم التسلسلي أو ابحث بالموديل أو السعة أو اللون"
+                placeholder={
+                  shelf === "phones"
+                    ? "امسح الرقم التسلسلي أو ابحث بالموديل أو السعة أو اللون"
+                    : `ابحث في ${shop.extras.title}`
+                }
                 className="h-12 w-full rounded-xl border border-line bg-page ps-11 pe-4 text-base select-text placeholder:text-muted/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
               />
             </div>
@@ -109,7 +128,15 @@ export function PosPage() {
               فواتير اليوم
             </Button>
           </div>
-          {brands.length > 1 && (
+          <Segmented
+            value={shelf}
+            onChange={setShelf}
+            options={[
+              { value: "phones", label: "الأجهزة" },
+              { value: "extras", label: shop.extras.title },
+            ]}
+          />
+          {shelf === "phones" && brands.length > 1 && (
             <div className="flex flex-wrap gap-2">
               <Chip active={brand === null} onClick={() => setBrand(null)}>
                 الكل
@@ -124,7 +151,9 @@ export function PosPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {visible.length === 0 ? (
+          {shelf === "extras" ? (
+            <ExtrasCatalog ticket={extras} query={query} currency={settings.currency} />
+          ) : visible.length === 0 ? (
             <Empty title={products.length === 0 ? "لا توجد موديلات بعد" : "لا توجد نتائج"}>
               {products.length === 0
                 ? "يضيف المدير الموديلات وأجهزتها من صفحة المنتجات، ثم تظهر هنا للبيع."
@@ -150,8 +179,8 @@ export function PosPage() {
       <aside className="flex w-[380px] shrink-0 flex-col border-s border-line bg-white">
         <header className="flex items-center justify-between px-5 pt-5 pb-3">
           <h2 className="text-lg font-semibold">الفاتورة الحالية</h2>
-          {cart.length > 0 && (
-            <Button tone="danger-ghost" size="sm" onClick={() => setCart([])}>
+          {!empty && (
+            <Button tone="danger-ghost" size="sm" onClick={() => (setCart([]), extras.clear())}>
               <Trash2 className="size-4" />
               تفريغ
             </Button>
@@ -159,7 +188,7 @@ export function PosPage() {
         </header>
 
         <div className="flex-1 overflow-y-auto px-5">
-          {cart.length === 0 ? (
+          {empty ? (
             <p className="py-16 text-center text-sm leading-7 text-muted">
               امسح الرقم التسلسلي للجهاز
               <br />
@@ -191,13 +220,14 @@ export function PosPage() {
                   </Button>
                 </li>
               ))}
+              <ExtraTicketLines ticket={extras} />
             </ul>
           )}
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-line p-5">
           <Readout
-            label={`الإجمالي · ${formatPhones(cart.length)}`}
+            label={`الإجمالي · ${ticketCount || formatPhones(0)}`}
             value={formatAmount(total)}
             unit={settings.currency}
             size="xl"
@@ -207,10 +237,10 @@ export function PosPage() {
             tone="pay"
             size="lg"
             className="w-full justify-center text-xl"
-            disabled={cart.length === 0}
+            disabled={empty}
             onClick={() => setCheckingOut(true)}
           >
-            دفع {cart.length > 0 && formatMoney(total, settings.currency)}
+            دفع {!empty && formatMoney(total, settings.currency)}
           </Button>
         </footer>
       </aside>
@@ -227,6 +257,7 @@ export function PosPage() {
       {checkingOut && (
         <CheckoutModal
           items={cart.map((l) => l.phone.id)}
+          extras={extras.toSend()}
           total={total}
           payment={payment}
           onDone={finishSale}

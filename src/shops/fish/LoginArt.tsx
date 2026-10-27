@@ -9,7 +9,7 @@ export function LoginArt() {
         طازة
       </div>
       <p className="relative max-w-xs text-lg leading-8 text-white/70">
-        البيع بالكيلو أو بالأوزان الجاهزة، والمخزون يُخصم مع كل فاتورة.
+        البيع بالجرام أو بالأوزان الجاهزة، والمخزون يُخصم مع كل فاتورة.
       </p>
     </section>
   );

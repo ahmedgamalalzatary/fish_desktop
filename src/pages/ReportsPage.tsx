@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { DataTable, type Column } from "../components/DataTable";
 import { ExportButtons } from "../components/ExportButtons";
 import { PeriodPicker } from "../components/PeriodPicker";
+import { extrasReportTab } from "../lib/extrasTicket";
 import { presetRange, type Preset } from "../lib/periods";
 import { ReportDocument } from "../components/ReportDocument";
 import { cx } from "../lib/cx";
@@ -62,7 +63,7 @@ interface ReportData {
   suppliers: SupplierReportRow[];
   purchasedItems: PurchasedItemRow[];
   expenses: Expense[];
-  /** The rows of each of the shop's report tabs, in the order of `shop.reportTabs`. */
+  /** The rows of each of the shop's report tabs (its own, then its extras'), in the order of `shopTabs`. */
   shopRows: unknown[][];
 }
 
@@ -84,7 +85,8 @@ export function ReportsPage() {
   const [openPurchase, setOpenPurchase] = useState<number | null>(null);
   const currency = settings.currency;
   const units = shop.units;
-  const shopTabs = shop.reportTabs;
+  // The shop's own tabs, then its extras.
+  const shopTabs = useMemo(() => [...shop.reportTabs, extrasReportTab()], []);
   const tabs = allTabs(shopTabs);
 
   const fetchReports = useCallback(async (): Promise<ReportData> => {
@@ -98,10 +100,10 @@ export function ReportsPage() {
         api.reportBySupplier(range),
         api.reportPurchasedItems(range),
         api.listExpenses(range),
-        Promise.all(shop.reportTabs.map((t) => t.load(range))),
+        Promise.all(shopTabs.map((t) => t.load(range))),
       ]);
     return { summary, daily, sales, cashiers, purchases, suppliers, purchasedItems, expenses, shopRows };
-  }, [range]);
+  }, [range, shopTabs]);
   const [data] = useResource(fetchReports);
   // Loaded on its own so switching between daily, monthly and yearly does not reload everything.
   const [periods] = useResource(useCallback(() => api.reportPeriods(range, group), [range, group]));
@@ -214,7 +216,7 @@ export function ReportsPage() {
       label: "متوسط الفاتورة",
       value: formatMoney(s.sales_count ? Math.round(s.revenue / s.sales_count) : 0, currency),
     },
-    { label: `تكلفة ${units.noun} المباعة`, value: formatMoney(s.cost, currency) },
+    { label: "تكلفة البضاعة المباعة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
     { label: `${units.noun} المشتراة`, value: units.count(s.purchases_units) },
     { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
@@ -245,7 +247,7 @@ export function ReportsPage() {
     {
       header: units.perUnit,
       numeric: true,
-      cell: (r) => (r.units ? formatAmount(Math.round((r.cost * units.per) / r.units)) : "—"),
+      cell: (r) => (r.units ? units.unitPrice(r.cost, r.units) : "—"),
     },
     {
       header: "التكلفة",
@@ -489,8 +491,8 @@ export function ReportsPage() {
                 />
               </dl>
               <p className="mt-4 text-xs leading-5 text-muted">
-                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة{" "}
-                {units.noun} المباعة.
+                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة
+                البضاعة المباعة.
               </p>
             </Panel>
           </div>
@@ -661,7 +663,7 @@ function ProfitStatement({ summary: s, currency }: { summary: ReportSummary; cur
       value: s.revenue,
       kind: "plus",
     },
-    { label: `تكلفة ${shop.units.noun} المباعة`, value: s.cost, kind: "minus" },
+    { label: "تكلفة البضاعة المباعة", value: s.cost, kind: "minus" },
     { label: "إجمالي الربح", note: `هامش ${margin(s.profit, s.revenue)}`, value: s.profit, kind: "result" },
     { label: "المصروفات", value: s.expenses, kind: "minus" },
   ];

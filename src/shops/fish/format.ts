@@ -1,25 +1,31 @@
-import { parseDecimal } from "../../lib/format";
+import { parseCount, parseDecimal } from "../../lib/format";
 import type { MovementReason } from "./types";
 
-const kilos = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+const grams = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+// A price per gram is stored in thousandths of a cent: 100,000 to the currency unit.
+const gramPrice = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 5 });
 
-/** 1250 → "1.25 كجم", 250 → "250 جم" */
-export function formatWeight(grams: number): string {
-  if (Math.abs(grams) < 1000 && grams !== 0) return `${grams} جم`;
-  return `${kilos.format(grams / 1000)} كجم`;
-}
+/** 1250 → "1,250 جم" */
+export const formatWeight = (g: number) => `${grams.format(g)} جم`;
 
-/** Plain kilograms for inputs and the scale readout: 1250 → "1.250" */
-export const gramsToKg = (grams: number) => (grams / 1000).toFixed(3);
+/** Whole grams typed by the user. "1250" → 1250. Returns null for anything else. */
+export const parseGrams = (text: string) => parseCount(text);
 
-/** Kilograms typed by the user → grams. "1.25" → 1250. Returns null for anything that is not a number. */
-export function parseKg(text: string): number | null {
+/** A price per gram, in thousandths of a cent, with only the digits it needs: 25550 → "0.2555" */
+export const formatGramPrice = (milli: number) => gramPrice.format(milli / 100_000);
+
+/** A typed price per gram → thousandths of a cent. "0.2555" → 25550. Returns null for anything else. */
+export function parseGramPrice(text: string): number | null {
   const value = parseDecimal(text);
-  return value === null ? null : Math.round(value * 1000);
+  return value === null ? null : Math.round(value * 100_000);
 }
 
-/** Same rounding as the backend, so the cart preview always matches the receipt. */
-export const priceForGrams = (perKg: number, grams: number) => Math.floor((perKg * grams + 500) / 1000);
+/** The price per gram, in thousandths of a cent, of `g` grams that cost `cents`. */
+export const perGram = (cents: number, g: number) => Math.round((cents * 1000) / g);
+
+/** Same rounding as the backend, so the cart preview always matches the receipt: a price per gram in
+ *  thousandths of a cent times grams, to the nearest cent. */
+export const priceForGrams = (price: number, g: number) => Math.floor((price * g + 500) / 1000);
 
 export const movementLabels: Record<MovementReason, string> = {
   sale: "بيع",

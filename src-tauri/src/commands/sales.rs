@@ -1,3 +1,4 @@
+use super::extras::{self, ExtraLine, SaleExtra};
 use crate::db::now;
 use crate::error::{AppError, AppResult, invalid};
 use crate::shop::sales as shop;
@@ -31,6 +32,8 @@ pub struct Sale {
     change_due: i64,
     /// The shop's lines, as printed on the receipt.
     items: Vec<shop::SaleItem>,
+    /// Add-ons or accessories sold with them.
+    extras: Vec<SaleExtra>,
 }
 
 #[derive(Serialize)]
@@ -47,37 +50,38 @@ pub struct SaleSummary {
 pub fn create_sale(
     state: State<AppState>,
     items: shop::Cart,
+    extras: Vec<ExtraLine>,
     payments: Vec<PaymentInput>,
 ) -> AppResult<Sale> {
     let user = state.user()?;
     let mut db = state.db.lock().unwrap();
-    let sale_id = insert_sale(&mut db, user.id, &items, &payments)?;
+    let sale_id = insert_sale(&mut db, user.id, &items, &extras, &payments)?;
     load_sale(&db, sale_id)
 }
 
-/// Records a sale: the shop prices the cart from the database (never from the client) and writes its
-/// lines and stock changes; the payments are checked and stored here. All or nothing.
+/// Records a sale: the shop prices its cart from the database (never from the client) and writes its
+/// lines and stock changes, the extras the same way; the payments are checked and stored here.
+/// All or nothing.
 pub fn insert_sale(
     db: &mut Connection,
     user_id: i64,
     cart: &shop::Cart,
+    extra_lines: &[ExtraLine],
     payments: &[PaymentInput],
 ) -> AppResult<i64> {
+    if cart.is_empty() && extra_lines.is_empty() {
+        return invalid("السلة فارغة");
+    }
     let tx = db.transaction()?;
     let priced = shop::price(&tx, cart)?;
-    let (covered, paid) = settle(priced.total, payments)?;
+    let added = extras::price(&tx, extra_lines)?;
+    let (total, cost) = (priced.total + added.total, priced.cost + added.cost);
+    let (covered, paid) = settle(total, payments)?;
     let ts = now();
     tx.execute(
         "INSERT INTO sales (user_id, created_at, total, cost_total, paid, change_due)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![
-            user_id,
-            ts,
-            priced.total,
-            priced.cost,
-            paid,
-            paid - priced.total
-        ],
+        params![user_id, ts, total, cost, paid, paid - total],
     )?;
     let sale_id = tx.last_insert_rowid();
     for (method, amount) in covered {
@@ -87,6 +91,7 @@ pub fn insert_sale(
         )?;
     }
     shop::record(&tx, sale_id, user_id, &ts, &priced)?;
+    extras::record(&tx, sale_id, user_id, &ts, &added)?;
     tx.commit()?;
     Ok(sale_id)
 }
@@ -140,12 +145,14 @@ fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
                     paid: r.get(4)?,
                     change_due: r.get(5)?,
                     items: vec![],
+                    extras: vec![],
                 })
             },
         )
         .optional()?
         .ok_or(AppError::NotFound("الفاتورة"))?;
     sale.items = shop::load_items(db, id)?;
+    sale.extras = extras::load_sale_extras(db, id)?;
     let mut stmt =
         db.prepare("SELECT method, amount FROM sale_payments WHERE sale_id = ?1 ORDER BY id")?;
     sale.payments = stmt
@@ -197,6 +204,7 @@ pub fn list_sales(
         "SELECT s.id, s.created_at, u.name, s.total,
                 (SELECT GROUP_CONCAT(method) FROM sale_payments p WHERE p.sale_id = s.id),
                 (SELECT COUNT(*) FROM sale_items i WHERE i.sale_id = s.id)
+                    + (SELECT COUNT(*) FROM sale_extras x WHERE x.sale_id = s.id)
          FROM sales s JOIN users u ON u.id = s.user_id
          WHERE date(s.created_at) BETWEEN ?1 AND ?2 AND (?3 IS NULL OR s.user_id = ?3)
          ORDER BY s.id DESC LIMIT 1000",
@@ -239,7 +247,7 @@ mod tests {
             pay("wallet", 500_000),
             pay("cash", 1_200_000),
         ];
-        let id = insert_sale(&mut db, 1, &cart, &payments).unwrap();
+        let id = insert_sale(&mut db, 1, &cart, &[], &payments).unwrap();
         let sale = load_sale(&db, id).unwrap();
         assert_eq!(
             (sale.total, sale.paid, sale.change_due),
@@ -273,7 +281,7 @@ mod tests {
         let (mut db, path) = crate::test_support::temp_db("sale-short");
         let cart = testing::cart_worth(&db, &[(1_000, 600)]);
         let stock = testing::stock_units(&db);
-        assert!(insert_sale(&mut db, 1, &cart, &[pay("cash", 999)]).is_err());
+        assert!(insert_sale(&mut db, 1, &cart, &[], &[pay("cash", 999)]).is_err());
         let sales: i64 = db
             .query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))
             .unwrap();

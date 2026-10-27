@@ -25,8 +25,8 @@ pub struct Product {
     parent_category_id: Option<i64>,
     parent_category_name: Option<String>,
     sell_by_weight: bool,
-    price_per_kg: i64,
-    cost_per_kg: i64,
+    price_per_gram: i64,
+    cost_per_gram: i64,
     stock_grams: i64,
     low_stock_grams: i64,
     active: bool,
@@ -38,8 +38,8 @@ pub struct ProductInput {
     name: String,
     category_id: i64,
     sell_by_weight: bool,
-    price_per_kg: i64,
-    cost_per_kg: i64,
+    price_per_gram: i64,
+    cost_per_gram: i64,
     low_stock_grams: i64,
     variants: Vec<Variant>,
 }
@@ -50,12 +50,12 @@ impl ProductInput {
             return invalid("اسم المنتج مطلوب");
         }
         if !self.sell_by_weight && self.variants.is_empty() {
-            return invalid("أضف وزناً واحداً على الأقل أو فعّل البيع بالكيلو");
+            return invalid("أضف وزناً واحداً على الأقل أو فعّل البيع بالوزن");
         }
-        if self.sell_by_weight && self.price_per_kg <= 0 {
-            return invalid("سعر بيع الكيلو مطلوب عند تفعيل البيع بالكيلو");
+        if self.sell_by_weight && self.price_per_gram <= 0 {
+            return invalid("سعر بيع الجرام مطلوب عند تفعيل البيع بالوزن");
         }
-        if self.price_per_kg < 0 || self.cost_per_kg < 0 || self.low_stock_grams < 0 {
+        if self.price_per_gram < 0 || self.cost_per_gram < 0 || self.low_stock_grams < 0 {
             return invalid("القيم لا يمكن أن تكون سالبة");
         }
         for v in &self.variants {
@@ -90,7 +90,7 @@ pub fn load_products(
 
     let mut stmt = db.prepare(
         "SELECT p.id, p.name, p.category_id, c.name, c.parent_id, pc.name, p.sell_by_weight,
-                p.price_per_kg, p.cost_per_kg, p.stock_grams, p.low_stock_grams, p.active
+                p.price_per_gram, p.cost_per_gram, p.stock_grams, p.low_stock_grams, p.active
          FROM products p
          JOIN categories c ON c.id = p.category_id
          LEFT JOIN categories pc ON pc.id = c.parent_id
@@ -107,8 +107,8 @@ pub fn load_products(
             parent_category_id: r.get(4)?,
             parent_category_name: r.get(5)?,
             sell_by_weight: r.get(6)?,
-            price_per_kg: r.get(7)?,
-            cost_per_kg: if hide_cost { 0 } else { r.get(8)? },
+            price_per_gram: r.get(7)?,
+            cost_per_gram: if hide_cost { 0 } else { r.get(8)? },
             stock_grams: r.get(9)?,
             low_stock_grams: r.get(10)?,
             active: r.get(11)?,
@@ -183,9 +183,9 @@ pub fn insert_product(
     let tx = db.transaction()?;
     let ts = now();
     tx.execute(
-        "INSERT INTO products (name, category_id, sell_by_weight, price_per_kg, cost_per_kg, low_stock_grams, stock_grams, created_at, updated_at)
+        "INSERT INTO products (name, category_id, sell_by_weight, price_per_gram, cost_per_gram, low_stock_grams, stock_grams, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
-        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_kg, input.cost_per_kg, input.low_stock_grams, opening_stock_grams, ts],
+        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_gram, input.cost_per_gram, input.low_stock_grams, opening_stock_grams, ts],
     )?;
     let id = tx.last_insert_rowid();
     save_variants(&tx, id, &input.variants)?;
@@ -207,9 +207,9 @@ pub fn update_product(state: State<AppState>, id: i64, input: ProductInput) -> A
     let mut db = state.db.lock().unwrap();
     let tx = db.transaction()?;
     let changed = tx.execute(
-        "UPDATE products SET name = ?1, category_id = ?2, sell_by_weight = ?3, price_per_kg = ?4, cost_per_kg = ?5,
+        "UPDATE products SET name = ?1, category_id = ?2, sell_by_weight = ?3, price_per_gram = ?4, cost_per_gram = ?5,
                 low_stock_grams = ?6, updated_at = ?7 WHERE id = ?8",
-        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_kg, input.cost_per_kg, input.low_stock_grams, now(), id],
+        params![input.name.trim(), input.category_id, input.sell_by_weight, input.price_per_gram, input.cost_per_gram, input.low_stock_grams, now(), id],
     )?;
     if changed == 0 {
         return Err(AppError::NotFound("المنتج"));
@@ -258,8 +258,8 @@ mod tests {
             name: "بلطي".into(),
             category_id,
             sell_by_weight: true,
-            price_per_kg: 9000,
-            cost_per_kg: 6000,
+            price_per_gram: 9000,
+            cost_per_gram: 6000,
             low_stock_grams: 0,
             variants: vec![],
         }

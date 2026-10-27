@@ -3,6 +3,7 @@ import type { Cart } from "@shop/types";
 import { Banknote, CreditCard, Smartphone, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import type { ExtraLine } from "../lib/extras";
 import { cx } from "../lib/cx";
 import { section } from "../lib/document";
 import {
@@ -63,6 +64,7 @@ export function PaymentPicker({
  */
 export function CheckoutModal({
   items,
+  extras,
   total,
   payment,
   onDone,
@@ -70,6 +72,9 @@ export function CheckoutModal({
 }: {
   /** The shop's cart, sent as-is; the backend prices it again. */
   items: Cart;
+  /** Add-ons or accessories on the same sale. */
+  extras: ExtraLine[];
+  /** Everything on the ticket: the shop's lines and the extras. */
   total: number;
   payment: PaymentMethod;
   onDone: (sale: Sale) => void;
@@ -122,6 +127,7 @@ export function CheckoutModal({
     try {
       const sale = await api.createSale(
         items,
+        extras,
         methods.filter((m) => amountOf(m) > 0).map((m) => ({ method: m, amount: amountOf(m) })),
       );
       onDone(sale);

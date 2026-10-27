@@ -1,14 +1,17 @@
 import { Minus, Plus, Receipt as ReceiptIcon, Search, Trash2, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { CheckoutModal, PaymentPicker, ReceiptModal, TodaySalesModal } from "../../components/Checkout";
+import { ExtraTicketLines, ExtrasCatalog } from "../../components/Extras";
+import { useExtrasTicket } from "../../lib/extrasTicket";
 import { Button, Empty, Keypad, Modal, Segmented } from "../../components/ui";
 import { cx } from "../../lib/cx";
 import { formatAmount, formatMoney } from "../../lib/format";
+import { shop } from "./index";
 import { useSession } from "../../lib/session";
 import type { PaymentMethod, Sale } from "../../lib/types";
 import { useResource } from "../../lib/useResource";
 import { api } from "./api";
-import { formatWeight, parseKg, priceForGrams } from "./format";
+import { formatGramPrice, formatWeight, parseGrams, priceForGrams } from "./format";
 import { Readout } from "./Readout";
 import type { Cart, Product, Variant } from "./types";
 
@@ -30,7 +33,7 @@ const toCart = (cart: CartLine[]): Cart =>
   }));
 
 const lineTotal = (l: CartLine) =>
-  l.variant ? l.variant.price * l.quantity : priceForGrams(l.product.price_per_kg, l.grams);
+  l.variant ? l.variant.price * l.quantity : priceForGrams(l.product.price_per_gram, l.grams);
 
 export function PosPage() {
   const { settings } = useSession();
@@ -43,6 +46,7 @@ export function PosPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [showToday, setShowToday] = useState(false);
+  const [shelf, setShelf] = useState<"fish" | "extras">("fish");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const [data, load] = useResource(
@@ -51,6 +55,7 @@ export function PosPage() {
   const [products, categories] = useMemo(() => data ?? [[], []], [data]);
 
   const allowNegative = settings.allow_negative_stock === "1";
+  const extras = useExtrasTicket(allowNegative);
   const topCategories = categories.filter((c) => c.parent_id === null);
   const subCategories = categories.filter((c) => c.parent_id !== null && c.parent_id === topCategory);
 
@@ -74,7 +79,8 @@ export function PosPage() {
     return m;
   }, [cart]);
 
-  const total = cart.reduce((sum, l) => sum + lineTotal(l), 0);
+  const total = cart.reduce((sum, l) => sum + lineTotal(l), 0) + extras.total;
+  const lineCount = cart.length + extras.lines.length;
 
   const addLine = (product: Product, variant: Variant | null, quantity: number, grams: number) => {
     setCart((c) => {
@@ -100,8 +106,10 @@ export function PosPage() {
   const finishSale = (sale: Sale) => {
     setCheckingOut(false);
     setCart([]);
+    extras.clear();
     setLastSale(sale);
     load();
+    extras.reload();
   };
 
   return (
@@ -117,7 +125,7 @@ export function PosPage() {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ابحث باسم المنتج"
+                placeholder={shelf === "fish" ? "ابحث باسم المنتج" : `ابحث في ${shop.extras.title}`}
                 className="h-12 w-full rounded-xl border border-line bg-page ps-11 pe-4 text-base select-text placeholder:text-muted/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
               />
             </div>
@@ -126,21 +134,34 @@ export function PosPage() {
               فواتير اليوم
             </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Chip active={topCategory === null} onClick={() => (setTopCategory(null), setSubCategory(null))}>
-              الكل
-            </Chip>
-            {topCategories.map((c) => (
+          <Segmented
+            value={shelf}
+            onChange={setShelf}
+            options={[
+              { value: "fish", label: "الأسماك" },
+              { value: "extras", label: shop.extras.title },
+            ]}
+          />
+          {shelf === "fish" && (
+            <div className="flex flex-wrap gap-2">
               <Chip
-                key={c.id}
-                active={topCategory === c.id}
-                onClick={() => (setTopCategory(c.id), setSubCategory(null))}
+                active={topCategory === null}
+                onClick={() => (setTopCategory(null), setSubCategory(null))}
               >
-                {c.name}
+                الكل
               </Chip>
-            ))}
-          </div>
-          {subCategories.length > 0 && (
+              {topCategories.map((c) => (
+                <Chip
+                  key={c.id}
+                  active={topCategory === c.id}
+                  onClick={() => (setTopCategory(c.id), setSubCategory(null))}
+                >
+                  {c.name}
+                </Chip>
+              ))}
+            </div>
+          )}
+          {shelf === "fish" && subCategories.length > 0 && (
             <div className="flex flex-wrap gap-2 border-t border-dashed border-line pt-3">
               <Chip small active={subCategory === null} onClick={() => setSubCategory(null)}>
                 كل الأنواع
@@ -155,7 +176,9 @@ export function PosPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {visible.length === 0 ? (
+          {shelf === "extras" ? (
+            <ExtrasCatalog ticket={extras} query={query} currency={settings.currency} />
+          ) : visible.length === 0 ? (
             <Empty title={products.length === 0 ? "لا توجد منتجات بعد" : "لا توجد نتائج"}>
               {products.length === 0
                 ? "يضيف المدير المنتجات من صفحة المنتجات، ثم تظهر هنا للبيع."
@@ -182,8 +205,8 @@ export function PosPage() {
       <aside className="flex w-[380px] shrink-0 flex-col border-s border-line bg-white">
         <header className="flex items-center justify-between px-5 pt-5 pb-3">
           <h2 className="text-lg font-semibold">الفاتورة الحالية</h2>
-          {cart.length > 0 && (
-            <Button tone="danger-ghost" size="sm" onClick={() => setCart([])}>
+          {lineCount > 0 && (
+            <Button tone="danger-ghost" size="sm" onClick={() => (setCart([]), extras.clear())}>
               <Trash2 className="size-4" />
               تفريغ
             </Button>
@@ -191,7 +214,7 @@ export function PosPage() {
         </header>
 
         <div className="flex-1 overflow-y-auto px-5">
-          {cart.length === 0 ? (
+          {lineCount === 0 ? (
             <p className="py-16 text-center text-sm leading-7 text-muted">
               اختر منتجاً من القائمة
               <br />
@@ -206,7 +229,7 @@ export function PosPage() {
                     <div className="text-sm text-muted">
                       {l.variant
                         ? `${l.variant.label} · ${formatAmount(l.variant.price)}`
-                        : `${formatWeight(l.grams)} × ${formatAmount(l.product.price_per_kg)}/كجم`}
+                        : `${formatWeight(l.grams)} × ${formatGramPrice(l.product.price_per_gram)}/جم`}
                     </div>
                   </div>
                   {l.variant ? (
@@ -245,13 +268,14 @@ export function PosPage() {
                   <div className="w-20 text-end font-semibold">{formatAmount(lineTotal(l))}</div>
                 </li>
               ))}
+              <ExtraTicketLines ticket={extras} />
             </ul>
           )}
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-line p-5">
           <Readout
-            label={`الإجمالي (${cart.length} صنف)`}
+            label={`الإجمالي (${lineCount} صنف)`}
             value={formatAmount(total)}
             unit={settings.currency}
             size="xl"
@@ -261,10 +285,10 @@ export function PosPage() {
             tone="pay"
             size="lg"
             className="w-full justify-center text-xl"
-            disabled={cart.length === 0}
+            disabled={lineCount === 0}
             onClick={() => setCheckingOut(true)}
           >
-            دفع {cart.length > 0 && formatMoney(total, settings.currency)}
+            دفع {lineCount > 0 && formatMoney(total, settings.currency)}
           </Button>
         </footer>
       </aside>
@@ -282,6 +306,7 @@ export function PosPage() {
       {checkingOut && (
         <CheckoutModal
           items={toCart(cart)}
+          extras={extras.toSend()}
           total={total}
           payment={payment}
           onDone={finishSale}
@@ -375,8 +400,8 @@ function ProductTag({
           <div className="ps-2.5 text-end leading-tight">
             {p.sell_by_weight ? (
               <>
-                <span className="text-lg font-bold">{formatAmount(p.price_per_kg)}</span>
-                <span className="block text-[11px]">{currency} / كجم</span>
+                <span className="text-lg font-bold">{formatGramPrice(p.price_per_gram)}</span>
+                <span className="block text-[11px]">{currency} / جم</span>
               </>
             ) : (
               <>
@@ -410,11 +435,11 @@ function AddItemModal({
   const [mode, setMode] = useState<"variant" | "weight">(hasVariants ? "variant" : "weight");
   const [variant, setVariant] = useState<Variant | null>(product.variants[0] ?? null);
   const [quantity, setQuantity] = useState(1);
-  const [kg, setKg] = useState("");
+  const [typed, setTyped] = useState("");
 
-  const grams = mode === "weight" ? (parseKg(kg) ?? 0) : (variant?.weight_grams ?? 0) * quantity;
+  const grams = mode === "weight" ? (parseGrams(typed) ?? 0) : (variant?.weight_grams ?? 0) * quantity;
   const price =
-    mode === "weight" ? priceForGrams(product.price_per_kg, grams) : (variant?.price ?? 0) * quantity;
+    mode === "weight" ? priceForGrams(product.price_per_gram, grams) : (variant?.price ?? 0) * quantity;
   const overStock = !allowNegative && grams > available;
   const canAdd = grams > 0 && !overStock && (mode === "weight" || variant !== null);
 
@@ -458,7 +483,7 @@ function AddItemModal({
             onChange={setMode}
             options={[
               { value: "variant", label: "أوزان جاهزة" },
-              { value: "weight", label: "بالكيلو" },
+              { value: "weight", label: "بالجرام" },
             ]}
           />
         )}
@@ -522,25 +547,23 @@ function AddItemModal({
         ) : (
           <div className="grid grid-cols-2 gap-5">
             <div className="flex flex-col gap-3">
-              <Readout label="الوزن" value={kg || "0.000"} unit="كجم" />
+              <Readout label="الوزن" value={typed || "0"} unit="جم" />
               <Readout
-                label={`السعر · ${formatAmount(product.price_per_kg)} للكيلو`}
+                label={`السعر · ${formatGramPrice(product.price_per_gram)} للجرام`}
                 value={formatAmount(price)}
                 unit={currency}
               />
               <input
                 dir="ltr"
-                inputMode="decimal"
-                value={kg}
-                onChange={(e) =>
-                  /^[0-9٠-٩]*[.٫]?[0-9٠-٩]{0,3}$/.test(e.target.value) && setKg(e.target.value)
-                }
-                placeholder="اكتب الوزن بالكيلو"
-                aria-label="الوزن بالكيلو"
+                inputMode="numeric"
+                value={typed}
+                onChange={(e) => /^[0-9٠-٩]*$/.test(e.target.value) && setTyped(e.target.value)}
+                placeholder="اكتب الوزن بالجرام"
+                aria-label="الوزن بالجرام"
                 className="h-11 rounded-lg border border-line bg-white px-3 text-center text-lg select-text focus:border-ink-3 focus:outline-none"
               />
             </div>
-            <Keypad value={kg} onChange={setKg} maxDecimals={3} />
+            <Keypad value={typed} onChange={setTyped} maxDecimals={0} />
           </div>
         )}
         <button type="submit" hidden />

@@ -18,11 +18,13 @@ pub type Lines = Vec<PurchaseItemInput>;
 /// Phones on an invoice, for the purchases list.
 pub const ITEMS_COUNT_SQL: &str = "(SELECT COUNT(*) FROM phones ph WHERE ph.purchase_id = p.id)";
 
+/// Whether the invoice has no phones (it may still have extras).
+pub fn is_empty(lines: &Lines) -> bool {
+    lines.is_empty()
+}
+
 /// The invoice total: what the supplier charged for its phones.
 pub fn total(lines: &Lines) -> AppResult<i64> {
-    if lines.is_empty() {
-        return invalid("أضف جهازاً واحداً على الأقل");
-    }
     Ok(lines.iter().map(|i| i.phone.cost).sum())
 }
 
@@ -119,6 +121,7 @@ mod tests {
             note: String::new(),
             paid: 0,
             items: testing::lines_costing(&db, &[1_000, 1_000, 1_000]),
+            extras: vec![],
         };
         let id = insert_purchase(&mut db, 1, &input).unwrap();
         db.execute(

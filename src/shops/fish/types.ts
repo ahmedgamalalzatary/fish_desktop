@@ -1,4 +1,5 @@
-// The fish shop's payloads. Weights are integer grams, money integer cents.
+// The fish shop's payloads. Weights are integer grams, money integer cents, and a price per gram is in
+// thousandths of a cent (0.09 a gram is 9000).
 
 export interface Category {
   id: number;
@@ -7,7 +8,7 @@ export interface Category {
   product_count: number;
 }
 
-/** A fixed-weight pack of a product ("half a kilo"), with its own price. */
+/** A fixed-weight pack of a product ("500 g box"), with its own price. */
 export interface Variant {
   id: number | null;
   label: string;
@@ -24,8 +25,9 @@ export interface Product {
   parent_category_id: number | null;
   parent_category_name: string | null;
   sell_by_weight: boolean;
-  price_per_kg: number;
-  cost_per_kg: number;
+  /** Thousandths of a cent per gram, like `cost_per_gram`. */
+  price_per_gram: number;
+  cost_per_gram: number;
   stock_grams: number;
   low_stock_grams: number;
   active: boolean;
@@ -36,8 +38,8 @@ export interface ProductInput {
   name: string;
   category_id: number;
   sell_by_weight: boolean;
-  price_per_kg: number;
-  cost_per_kg: number;
+  price_per_gram: number;
+  cost_per_gram: number;
   low_stock_grams: number;
   variants: Variant[];
 }
@@ -58,6 +60,7 @@ export interface SaleItem {
   variant_label: string | null;
   quantity: number;
   weight_grams: number;
+  /** A pack's price in cents, or for a weighed line the price per gram in thousandths of a cent. */
   unit_price: number;
   line_total: number;
 }
@@ -70,7 +73,7 @@ export interface PurchaseLine {
 }
 
 export interface PurchaseLines {
-  /** Set each product's cost per kg from this invoice. */
+  /** Set each product's cost per gram from this invoice. */
   update_cost: boolean;
   lines: PurchaseLine[];
 }

@@ -378,12 +378,13 @@ mod tests {
             note: String::new(),
             paid: 0,
             items: testing::lines_costing(&db, &[3_500, 3_500]),
+            extras: vec![],
         };
         insert_purchase(&mut db, 1, &invoice).unwrap();
         // March: two sales, the first of two items; April: one sale. Each item sells for 1,000, cost 700.
         for items in [2, 1, 1] {
             let cart = testing::cart_worth(&db, &vec![(1_000, 700); items]);
-            insert_sale(&mut db, 1, &cart, &cash(1_000 * items as i64)).unwrap();
+            insert_sale(&mut db, 1, &cart, &[], &cash(1_000 * items as i64)).unwrap();
         }
         db.execute_batch(
             "UPDATE purchases SET created_at = '2026-02-27 09:00:00';

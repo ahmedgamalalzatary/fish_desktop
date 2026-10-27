@@ -1,4 +1,5 @@
-import { Package, Warehouse } from "lucide-react";
+import { Headphones, Package, Warehouse } from "lucide-react";
+import { formatAmount } from "../../lib/format";
 import type { Shop } from "../../lib/shop";
 import { formatPhones } from "./format";
 import { LoginArt } from "./LoginArt";
@@ -35,19 +36,28 @@ export const shop: Shop = {
         price: 3245000,
       },
     ],
-    total: 3245000,
+    extras: [{ name: "جراب سيليكون", quantity: 1, unit_price: 15000, line_total: 15000 }],
+    total: 3260000,
     payments: [
-      { method: "cash", amount: 1245000 },
+      { method: "cash", amount: 1260000 },
       { method: "card", amount: 2000000 },
     ],
-    paid: 3250000,
+    paid: 3265000,
     change_due: 5000,
+  },
+  extras: {
+    title: "الإكسسوارات",
+    one: "إكسسوار",
+    newOne: "إكسسوار جديد",
+    icon: Headphones,
+    categoriesExample: "«جرابات» و«اسكرينات» و«شواحن»، وتحت «جرابات»: «جرابات آيفون»",
+    nameExample: "جراب سيليكون آيفون 15",
   },
   units: {
     noun: "الأجهزة",
     product: "الموديل",
     perUnit: "متوسط سعر الجهاز",
-    per: 1,
+    unitPrice: (cost, units) => formatAmount(Math.round(cost / units)),
     format: (n) => n,
     count: formatPhones,
   },
