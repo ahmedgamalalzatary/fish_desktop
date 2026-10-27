@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { Banknote, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type Column } from "../components/DataTable";
@@ -11,7 +12,6 @@ import {
   Empty,
   Field,
   Input,
-  Screen,
   Modal,
   PageHeader,
   Panel,
@@ -528,7 +528,7 @@ export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; o
             </Field>
           </div>
           <div className="flex flex-col gap-2">
-            <Screen
+            <shop.Readout
               label={`إجمالي الفاتورة · ${formatPhones(filled.length)}`}
               value={formatAmount(total)}
               unit={settings.currency}
@@ -840,7 +840,7 @@ function PaymentModal({
           save();
         }}
       >
-        <Screen
+        <shop.Readout
           label="المستحق له حالياً"
           value={formatAmount(supplier.balance)}
           unit={settings.currency}

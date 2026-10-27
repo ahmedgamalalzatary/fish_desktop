@@ -1883,23 +1883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mobile-pos"
-version = "0.4.0"
-dependencies = [
- "argon2",
- "chrono",
- "rand_core",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "webview2-com",
- "windows",
-]
-
-[[package]]
 name = "muda"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2371,6 +2354,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10ab3eb7f3becc3a1cbc4f2c6f20267996cfc1a6467a873763411b136a122715"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "pos"
+version = "0.0.0"
+dependencies = [
+ "argon2",
+ "chrono",
+ "rand_core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

@@ -195,7 +195,8 @@ smoke test written.
   icons and `vite --mode mobile` commands. Base `tauri.conf.json` keeps only shared settings.
 - `package.json` scripts: `dev:mobile`, `build:mobile`, `check:mobile`; `check` runs every shop. Rename
   package to `pos`.
-- Move icons to `src-tauri/shops/mobile/icons/`.
+- Icons: both shops still ship Tauri's default logo, so `src-tauri/icons/` stays the shared default. A shop with
+  its own icons sets `bundle.icon` in its config to `shops/<shop>/icons/…`.
 
 ### Slice 2b — Empty shop modules wired in
 

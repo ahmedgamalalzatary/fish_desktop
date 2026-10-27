@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DataTable, type Column } from "../components/DataTable";
@@ -11,7 +12,7 @@ import { expenseByUserColumns, expenseColumns, expensesByUser } from "../lib/exp
 import { purchaseColumns, supplierReportColumns } from "../lib/purchases";
 import { stockColumns, stockRows, type StockRow } from "../lib/stock";
 import { useResource } from "../lib/useResource";
-import { Empty, PageHeader, Panel, Screen, Segmented, Select } from "../components/ui";
+import { Empty, PageHeader, Panel, Segmented, Select } from "../components/ui";
 import { api } from "../lib/api";
 import {
   formatAmount,
@@ -812,7 +813,7 @@ function ProfitStatement({ summary: s, currency }: { summary: ReportSummary; cur
           </div>
         ))}
       </dl>
-      <Screen
+      <shop.Readout
         className="mt-4"
         label={s.net_profit < 0 ? "خسارة الفترة" : "صافي الربح"}
         value={formatAmount(Math.abs(s.net_profit))}

@@ -18,8 +18,12 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* The shop the editor and `tsc` see; tsconfig.<shop>.json points it at another shop. */
+    "paths": { "@shop": ["./src/shops/mobile"], "@shop/*": ["./src/shops/mobile/*"] }
   },
   "include": ["src", "tests"],
+  "exclude": ["tests/shops.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

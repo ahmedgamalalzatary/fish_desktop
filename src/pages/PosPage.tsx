@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { Banknote, CreditCard, Receipt as ReceiptIcon, Search, Smartphone, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExportButtons } from "../components/ExportButtons";
@@ -6,7 +7,7 @@ import { ReportDocument } from "../components/ReportDocument";
 import { cx } from "../lib/cx";
 import { section } from "../lib/document";
 import { useResource } from "../lib/useResource";
-import { Button, Empty, Keypad, Modal, Screen, Segmented } from "../components/ui";
+import { Button, Empty, Keypad, Modal, Segmented } from "../components/ui";
 import { api } from "../lib/api";
 import {
   formatAmount,
@@ -209,7 +210,7 @@ export function PosPage() {
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-line p-5">
-          <Screen
+          <shop.Readout
             label={`الإجمالي · ${formatPhones(cart.length)}`}
             value={formatAmount(total)}
             unit={settings.currency}
@@ -539,7 +540,7 @@ function CheckoutModal({
         className="grid grid-cols-[1.1fr_1fr] gap-6"
       >
         <div className="flex flex-col gap-3">
-          <Screen
+          <shop.Readout
             label={`${status.label} · المطلوب ${formatAmount(total)}`}
             value={formatAmount(status.value)}
             unit={settings.currency}
@@ -725,7 +726,7 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
         <Empty title="لا توجد فواتير اليوم بعد" />
       ) : (
         <>
-          <Screen
+          <shop.Readout
             className="mb-4"
             size="md"
             label={`${sales.length} فاتورة`}

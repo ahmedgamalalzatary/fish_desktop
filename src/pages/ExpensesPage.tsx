@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { DataTable, type Column } from "../components/DataTable";
@@ -5,17 +6,7 @@ import { ExportButtons } from "../components/ExportButtons";
 import { PeriodPicker } from "../components/PeriodPicker";
 import { presetRange, type Preset } from "../lib/periods";
 import { ReportDocument } from "../components/ReportDocument";
-import {
-  Button,
-  ConfirmDialog,
-  Empty,
-  Field,
-  Input,
-  PageHeader,
-  Panel,
-  Screen,
-  Select,
-} from "../components/ui";
+import { Button, ConfirmDialog, Empty, Field, Input, PageHeader, Panel, Select } from "../components/ui";
 import { api } from "../lib/api";
 import { section } from "../lib/document";
 import { expenseByUserColumns, expenseColumns, expensesByUser } from "../lib/expenses";
@@ -214,7 +205,7 @@ export function ExpensesPage() {
           )}
         </Panel>
         <div className="flex flex-col gap-4">
-          <Screen
+          <shop.Readout
             size="md"
             label={`إجمالي المصروفات · ${expenses.length}`}
             value={formatAmount(total)}

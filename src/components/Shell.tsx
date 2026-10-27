@@ -1,26 +1,23 @@
+import { shop } from "@shop";
 import {
   ChartColumnBig,
   LogOut,
-  Package,
   Settings,
   ShoppingBasket,
   Truck,
   UsersRound,
   WalletMinimal,
-  Warehouse,
-  type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useSession } from "../lib/session";
+import type { NavItem } from "../lib/shop";
 
-/** `cashier` marks the pages a cashier can open too. */
-const nav: { to: string; label: string; icon: LucideIcon; cashier?: true }[] = [
+const nav: NavItem[] = [
   { to: "/pos", label: "البيع", icon: ShoppingBasket, cashier: true },
   { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
   { to: "/reports", label: "التقارير", icon: ChartColumnBig },
-  { to: "/products", label: "المنتجات", icon: Package },
-  { to: "/stock", label: "المخزون", icon: Warehouse },
+  ...shop.navItems,
   { to: "/purchases", label: "المشتريات", icon: Truck },
   { to: "/employees", label: "الموظفون", icon: UsersRound },
   { to: "/settings", label: "الإعدادات", icon: Settings },

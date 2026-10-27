@@ -1,15 +1,19 @@
 [package]
-name = "mobile-pos"
-version = "0.4.0"
-description = "نظام نقاط بيع لمحل الموبايلات"
+name = "pos"
+version = "0.0.0"
+description = "نظام نقاط بيع"
 authors = ["Ahmed"]
 edition = "2024"
 
 [lib]
 # The `_lib` suffix avoids a name clash between the lib and bin on Windows,
 # see https://github.com/rust-lang/cargo/issues/8519
-name = "mobile_pos_lib"
+name = "pos_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Exactly one shop per build: `--features mobile`. See src/shops/.
+[features]
+mobile = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

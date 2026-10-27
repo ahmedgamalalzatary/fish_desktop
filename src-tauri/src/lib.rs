@@ -5,6 +5,13 @@ mod error;
 mod fixture_tests;
 mod state;
 
+// The shop this build is for, picked by a Cargo feature (`--features mobile`).
+#[cfg(feature = "mobile")]
+#[path = "shops/mobile/mod.rs"]
+mod shop;
+#[cfg(not(any(feature = "mobile")))]
+compile_error!("Pick the shop to build with a feature, e.g. `--features mobile`.");
+
 use commands::*;
 use tauri::Manager;
 
@@ -15,7 +22,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let conn = db::open(&dir.join("phones.db"))?;
+            let conn = db::open(&dir.join(shop::DB_FILE))?;
             app.manage(state::AppState::new(conn));
             Ok(())
         })
