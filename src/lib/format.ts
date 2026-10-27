@@ -23,7 +23,8 @@ export function parseCount(text: string): number | null {
 
 const easternDigits = "٠١٢٣٤٥٦٧٨٩";
 
-function parseDecimal(text: string): number | null {
+/** A non-negative decimal typed in, with Arabic digits and separators. Returns null for anything else. */
+export function parseDecimal(text: string): number | null {
   // Accept Arabic-Indic digits and the Arabic decimal separator from Arabic keyboards.
   const normalized = text
     .trim()

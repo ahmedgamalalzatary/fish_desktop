@@ -2,17 +2,17 @@ import { useCallback, useState } from "react";
 import type { Column } from "../../components/DataTable";
 import { Empty } from "../../components/ui";
 import { formatAmount, parseMoney } from "../../lib/format";
-import type { PurchaseLines } from "../../lib/shop";
+import type { PurchaseForm } from "../../lib/shop";
 import type { Purchase } from "../../lib/types";
 import { useResource } from "../../lib/useResource";
 import { api } from "./api";
 import { formatPhones, phoneDetails } from "./format";
 import { PhoneLines } from "./PhoneLines";
 import { isBlank, newDraft, readDraft, repeatedSerials, type PhoneDraft } from "./phones";
-import type { PurchaseItem, PurchaseLine } from "./types";
+import type { PurchaseItem, PurchaseLines } from "./types";
 
 /** The invoice's phones, one row per serial, each picking its model. */
-export function usePurchaseLines(): PurchaseLines {
+export function usePurchaseLines(): PurchaseForm {
   const [products] = useResource(useCallback(() => api.listProducts(), []));
   const [drafts, setDrafts] = useState<PhoneDraft[]>(() => [newDraft()]);
   const filled = drafts.filter((d) => !isBlank(d));
@@ -20,7 +20,7 @@ export function usePurchaseLines(): PurchaseLines {
   const read = () => {
     if (filled.length === 0) return { error: "أضف جهازاً واحداً على الأقل" };
     if (repeatedSerials(filled).size > 0) return { error: "رقم تسلسلي مكرر في الفاتورة" };
-    const items: PurchaseLine[] = [];
+    const items: PurchaseLines = [];
     for (const d of filled) {
       if (!d.productId) return { error: `اختر الموديل للجهاز ${d.serial || "الفارغ"}` };
       const draft = readDraft(d);

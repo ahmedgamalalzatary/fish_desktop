@@ -10,7 +10,7 @@ import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import type { Settings } from "../lib/types";
 
-function Section({
+export function Section({
   title,
   description,
   children,
@@ -34,8 +34,8 @@ export function SettingsPage() {
   const { settings, reloadSettings } = useSession();
   const toast = useToast();
   const [draft, setDraft] = useState<Settings>(settings);
-  const set = (key: keyof Settings) => (value: string) => setDraft((d) => ({ ...d, [key]: value }));
-  const dirty = (Object.keys(draft) as (keyof Settings)[]).some((k) => draft[k] !== settings[k]);
+  const set = (key: string) => (value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const dirty = Object.keys(draft).some((k) => draft[k] !== settings[k]);
 
   const saveSettings = async () => {
     try {
@@ -115,6 +115,8 @@ export function SettingsPage() {
           </div>
         </div>
       </Section>
+
+      {shop.SettingsSection && <shop.SettingsSection draft={draft} set={set} />}
 
       <ChangePassword />
       <Backup />

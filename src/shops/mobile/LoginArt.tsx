@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 
-/** A phone on the counter, showing the shop's clock on its lock screen. */
+/** The left half of the sign-in screen: the phone, and what the app is for. */
 export function LoginArt() {
+  return (
+    <section className="relative hidden w-[44%] flex-col items-center justify-center gap-10 overflow-hidden bg-ink p-12 text-white lg:flex">
+      <LockScreen />
+      <p className="max-w-xs text-center text-lg leading-8 text-white/65">
+        كل جهاز برقمه التسلسلي وسعته ولونه وبطاريته، ويخرج من المخزون مع فاتورته.
+      </p>
+    </section>
+  );
+}
+
+/** A phone on the counter, showing the shop's clock on its lock screen. */
+function LockScreen() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 10_000);

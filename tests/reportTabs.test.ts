@@ -24,16 +24,31 @@ describe("allTabs", () => {
 });
 
 describe("narrowRows", () => {
+  type Row = { kind: string; amount: number };
+  const rows: Row[] = [
+    { kind: "sale", amount: 1 },
+    { kind: "purchase", amount: 2 },
+    { kind: "sale", amount: 3 },
+  ];
   const byKind = tab("moves", "stock", {
     label: "",
     all: "",
     options: [],
-    matches: (row, value) => (row as { kind: string }).kind === value,
+    apply: (rs, value) => (rs as Row[]).filter((r) => r.kind === value),
   });
-  const rows = [{ kind: "sale" }, { kind: "purchase" }, { kind: "sale" }];
 
-  it("keeps the rows the picked value matches", () => {
-    expect(narrowRows(byKind, rows, "sale")).toEqual([{ kind: "sale" }, { kind: "sale" }]);
+  it("keeps the rows the picked value keeps", () => {
+    expect(narrowRows(byKind, rows, "sale")).toEqual([rows[0], rows[2]]);
+  });
+
+  it("can turn the rows into others, e.g. merge them", () => {
+    const merged = tab("cats", "sales", {
+      label: "",
+      all: "",
+      options: [],
+      apply: (rs) => [{ kind: "all", amount: (rs as Row[]).reduce((s, r) => s + r.amount, 0) }],
+    });
+    expect(narrowRows(merged, rows, "merge")).toEqual([{ kind: "all", amount: 6 }]);
   });
 
   it("keeps every row when nothing is picked", () => {

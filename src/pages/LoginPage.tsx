@@ -36,10 +36,7 @@ export function LoginPage({
 
   return (
     <div className="flex h-full">
-      <section className="relative hidden w-[44%] flex-col items-center justify-center gap-10 overflow-hidden bg-ink p-12 text-white lg:flex">
-        <shop.LoginArt />
-        <p className="max-w-xs text-center text-lg leading-8 text-white/65">{shop.tagline}</p>
-      </section>
+      <shop.LoginArt />
       <section className="flex flex-1 flex-col items-center p-8">
         <form onSubmit={submit} className="my-auto w-full max-w-sm">
           <h1 className="text-3xl font-semibold">{firstRun ? "إنشاء حساب المدير" : "تسجيل الدخول"}</h1>

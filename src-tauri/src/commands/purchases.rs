@@ -78,6 +78,8 @@ pub struct PurchaseSummary {
     invoice_no: String,
     /// Lines on the invoice, counted the shop's way.
     items_count: i64,
+    /// What came in on the invoice, in the shop's units (phones, grams…).
+    units: i64,
     total: i64,
     /// Paid while receiving this invoice; later payments go to the supplier's account.
     paid: i64,
@@ -88,13 +90,15 @@ fn summary_sql() -> String {
     format!(
         "SELECT p.id, p.created_at, s.id, s.name, p.invoice_no,
             {},
+            COALESCE((SELECT SUM({}) FROM stock_movements m WHERE m.purchase_id = p.id AND m.reason = 'purchase'), 0),
             p.total,
             COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.purchase_id = p.id), 0),
             u.name
         FROM purchases p
         JOIN suppliers s ON s.id = p.supplier_id
         JOIN users u ON u.id = p.user_id",
-        shop::ITEMS_COUNT_SQL
+        shop::ITEMS_COUNT_SQL,
+        crate::shop::reports::MOVEMENT_UNITS
     )
 }
 
@@ -106,9 +110,10 @@ fn summary_row(r: &rusqlite::Row) -> rusqlite::Result<PurchaseSummary> {
         supplier_name: r.get(3)?,
         invoice_no: r.get(4)?,
         items_count: r.get(5)?,
-        total: r.get(6)?,
-        paid: r.get(7)?,
-        user_name: r.get(8)?,
+        units: r.get(6)?,
+        total: r.get(7)?,
+        paid: r.get(8)?,
+        user_name: r.get(9)?,
     })
 }
 
@@ -225,6 +230,17 @@ mod tests {
         let id = insert_purchase(&mut db, 1, &invoice).unwrap();
         assert_eq!(testing::stock_units(&db), 4 * testing::ITEM_UNITS);
         assert_eq!(balance(&db), 10_000 + 6_400_000 - 4_000_000);
+        let summary = db
+            .query_row(
+                &format!("{} WHERE p.id = ?1", summary_sql()),
+                [id],
+                summary_row,
+            )
+            .unwrap();
+        assert_eq!(
+            (summary.units, summary.total, summary.paid),
+            (4 * testing::ITEM_UNITS, 6_400_000, 4_000_000)
+        );
 
         remove_purchase(&mut db, id).unwrap();
         assert_eq!(testing::stock_units(&db), 0);

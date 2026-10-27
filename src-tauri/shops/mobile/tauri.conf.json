@@ -4,8 +4,8 @@
   "version": "0.4.0",
   "identifier": "com.mobileshop.pos",
   "build": {
-    "beforeDevCommand": "npm run dev:web -- --mode mobile",
-    "beforeBuildCommand": "npm run build:web -- --mode mobile"
+    "beforeDevCommand": "vite --mode mobile",
+    "beforeBuildCommand": "tsc --noEmit && vite build --mode mobile"
   },
   "app": {
     "windows": [

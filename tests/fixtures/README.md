@@ -3,10 +3,10 @@
 Databases written by **released** versions of each shop, used to prove that a new version opens an
 installed shop's database without losing anything. They hold made-up data, so they are committed.
 
-| File              | Written by               | `user_version` | Checked by                                  |
-| ----------------- | ------------------------ | -------------- | ------------------------------------------- |
-| `mobile-0.4.0.db` | mobile 0.4.0 (`95afe6e`) | 1              | `src-tauri/src/fixture_tests.rs`            |
-| `fish-0.2.0.db`   | fish 0.2.0 (`5a13245`)   | 2              | the fish upgrade test (Phase 5 of the plan) |
+| File              | Written by               | `user_version` | Checked by                                    |
+| ----------------- | ------------------------ | -------------- | --------------------------------------------- |
+| `mobile-0.4.0.db` | mobile 0.4.0 (`95afe6e`) | 1              | `src-tauri/src/shops/mobile/fixture_tests.rs` |
+| `fish-0.2.0.db`   | fish 0.2.0 (`5a13245`)   | 2              | `src-tauri/src/shops/fish/fixture_tests.rs`   |
 
 Never edit or regenerate a fixture to make a test pass. A fixture stands for a database that already
 exists on a customer's machine.

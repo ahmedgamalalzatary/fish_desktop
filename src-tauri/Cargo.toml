@@ -11,8 +11,9 @@ edition = "2024"
 name = "pos_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# Exactly one shop per build: `--features mobile`. See src/shops/.
+# Exactly one shop per build: `--features fish` or `--features mobile`. See src/shops/.
 [features]
+fish = []
 mobile = []
 
 [build-dependencies]

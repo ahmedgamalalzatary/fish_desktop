@@ -21,7 +21,7 @@ export function allTabs(shopTabs: ReportTab<unknown>[]): { value: Tab; label: st
   ];
 }
 
-/** A shop tab's rows narrowed by the value picked in its filter; "" keeps them all. */
+/** A shop tab's rows as the value picked in its drop-down shows them; "" keeps them as loaded. */
 export function narrowRows<T>(tab: ReportTab<T>, rows: T[], value: string): T[] {
-  return tab.filter && value ? rows.filter((r) => tab.filter!.matches(r, value)) : rows;
+  return tab.filter && value ? tab.filter.apply(rows, value) : rows;
 }

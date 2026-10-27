@@ -10,9 +10,8 @@ import { ReceiptItems } from "./ReceiptItems";
 import { reportTabs } from "./reports";
 import { StockPage } from "./StockPage";
 
-export const shop = {
+export const shop: Shop = {
   title: "نقطة بيع الموبايلات",
-  tagline: "كل جهاز برقمه التسلسلي وسعته ولونه وبطاريته، ويخرج من المخزون مع فاتورته.",
   navItems: [
     { to: "/products", label: "المنتجات", icon: Package },
     { to: "/stock", label: "المخزون", icon: Warehouse },
@@ -49,11 +48,10 @@ export const shop = {
     product: "الموديل",
     perUnit: "متوسط سعر الجهاز",
     per: 1,
-    invoiceLines: "الأجهزة",
     format: (n) => n,
     count: formatPhones,
   },
   usePurchaseLines,
   purchaseItemColumns,
   reportTabs,
-} satisfies Shop;
+};

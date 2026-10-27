@@ -302,7 +302,10 @@ export function ReportsPage() {
 
   const tabSections: Record<Tab, DocumentSection[]> = {
     ...Object.fromEntries(
-      shopTabs.map((t, i) => [t.value, [section({ columns: t.columns(shopRows[i], s), rows: shopRows[i] })]]),
+      shopTabs.map((t, i) => [
+        t.value,
+        [section({ columns: t.columns(shopRows[i], s, currency), rows: shopRows[i] })],
+      ]),
     ),
     summary: [
       section({
@@ -338,7 +341,7 @@ export function ReportsPage() {
         ? [
             section({
               title: t.inFullReport,
-              columns: t.columns(data.shopRows[i], s),
+              columns: t.columns(data.shopRows[i], s, currency),
               rows: data.shopRows[i],
             }),
           ]
@@ -614,7 +617,11 @@ export function ReportsPage() {
               )}
               <TabTable empty={t.empty}>
                 {shopRows[i].length > 0 && (
-                  <DataTable columns={t.columns(shopRows[i], s)} rows={shopRows[i]} rowKey={t.rowKey} />
+                  <DataTable
+                    columns={t.columns(shopRows[i], s, currency)}
+                    rows={shopRows[i]}
+                    rowKey={t.rowKey}
+                  />
                 )}
               </TabTable>
             </div>

@@ -12,11 +12,14 @@ export function purchaseColumns(rows: PurchaseSummary[]): Column<PurchaseSummary
     { header: "التاريخ", cell: (r) => formatDateTime(r.created_at) },
     { header: "المورد", cell: (r) => r.supplier_name },
     { header: "فاتورة المورد", cell: (r) => r.invoice_no || "—" },
+    ...(shop.units.invoiceLines
+      ? [{ header: shop.units.invoiceLines, numeric: true, cell: (r: PurchaseSummary) => r.items_count }]
+      : []),
     {
-      header: shop.units.invoiceLines,
+      header: shop.units.noun,
       numeric: true,
-      cell: (r) => r.items_count,
-      total: sum(rows, (r) => r.items_count),
+      cell: (r) => shop.units.format(r.units),
+      total: shop.units.format(sum(rows, (r) => r.units)),
     },
     {
       header: "الإجمالي",

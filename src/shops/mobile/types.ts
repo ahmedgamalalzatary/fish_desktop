@@ -52,6 +52,9 @@ export interface PurchaseLine extends PhoneInput {
   product_id: number;
 }
 
+/** An invoice's lines: one per phone. */
+export type PurchaseLines = PurchaseLine[];
+
 /** A phone as it came in on an invoice, and where it is now. */
 export interface PurchaseItem {
   product_name: string;

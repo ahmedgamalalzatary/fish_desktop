@@ -24,6 +24,6 @@
     "paths": { "@shop": ["./src/shops/mobile"], "@shop/*": ["./src/shops/mobile/*"] }
   },
   "include": ["src", "tests"],
-  "exclude": ["tests/shops.test.ts"],
+  "exclude": ["tests/shops.test.ts", "src/shops/fish", "tests/fish"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

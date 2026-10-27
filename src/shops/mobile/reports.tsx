@@ -77,7 +77,7 @@ export const reportTabs = [
         value: r,
         label: movementLabels[r],
       })),
-      matches: (r, reason) => r.reason === reason,
+      apply: (rows, reason) => rows.filter((r) => r.reason === reason),
     },
     columns: () => [
       {

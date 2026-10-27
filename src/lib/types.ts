@@ -1,7 +1,7 @@
 // Mirrors the Rust command payloads. Money is integer cents. What a sale or an invoice line holds is the
 // shop's (src/shops/<shop>/types.ts), reached through `@shop`.
 
-import type { PurchaseItem, PurchaseLine, SaleItem } from "@shop/types";
+import type { PurchaseItem, PurchaseLines, SaleItem } from "@shop/types";
 
 export type Role = "admin" | "cashier";
 export type PaymentMethod = "cash" | "card" | "wallet";
@@ -60,10 +60,12 @@ export interface SaleSummary {
   items_count: number;
 }
 
+/** The shared settings, plus any the shop adds (`allow_negative_stock`…). */
 export type Settings = Record<
   "shop_name" | "shop_phone" | "shop_address" | "receipt_footer" | "currency",
   string
->;
+> &
+  Partial<Record<string, string>>;
 
 export interface ReportSummary {
   sales_count: number;
@@ -158,7 +160,7 @@ export interface PurchaseInput {
   invoice_no: string;
   note: string;
   paid: number;
-  items: PurchaseLine[];
+  items: PurchaseLines;
 }
 
 export interface PurchaseSummary {
@@ -169,6 +171,8 @@ export interface PurchaseSummary {
   invoice_no: string;
   /** Lines on the invoice, counted the shop's way. */
   items_count: number;
+  /** What came in on the invoice, in the shop's units (phones, grams…). */
+  units: number;
   total: number;
   /** Paid while receiving the invoice; later payments go to the supplier's account. */
   paid: number;

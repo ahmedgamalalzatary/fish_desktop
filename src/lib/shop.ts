@@ -3,12 +3,12 @@
 //
 // The shop's modules import shared pages that import `@shop` back, so shared code reads `shop` inside
 // components and functions, never at the top level of a module.
-import type { PurchaseItem, PurchaseLine, SaleItem } from "@shop/types";
+import type { PurchaseItem, PurchaseLines, SaleItem } from "@shop/types";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type { Column } from "../components/DataTable";
 import type { Range } from "./api";
-import type { Purchase, ReportSummary, Sale } from "./types";
+import type { Purchase, ReportSummary, Sale, Settings } from "./types";
 
 /** The big totals display on the till, the checkout and the reports. */
 export interface ReadoutProps {
@@ -39,8 +39,8 @@ export interface Units {
   perUnit: string;
   /** How many units `perUnit` prices: 1 phone, or 1000 g for a price per kilo. */
   per: number;
-  /** Header for how many lines an invoice has: "الأجهزة". */
-  invoiceLines: string;
+  /** Header for how many lines an invoice has ("الأصناف"), for shops where that is not the units. */
+  invoiceLines?: string;
   /** A quantity in a table cell. */
   format: (units: number) => ReactNode;
   /** A quantity in a sentence: "3 أجهزة". */
@@ -48,14 +48,14 @@ export interface Units {
 }
 
 /** The lines of the purchase invoice form, owned by the shop. */
-export interface PurchaseLines {
+export interface PurchaseForm {
   /** The rows to fill in. */
   editor: ReactNode;
   total: number;
   /** What the filled-in lines add up to, in words: "3 أجهزة". */
   count: string;
   /** The lines to send, or why they cannot be sent yet. */
-  read: () => { items: PurchaseLine[] } | { error: string };
+  read: () => { items: PurchaseLines } | { error: string };
 }
 
 /** A reports tab that only this shop has (sales per product, stock…). */
@@ -70,16 +70,17 @@ export interface ReportTab<T> {
   intro?: string;
   empty: string;
   load: (range: Range) => Promise<T[]>;
-  columns: (rows: T[], summary: ReportSummary) => Column<T>[];
+  columns: (rows: T[], summary: ReportSummary, currency: string) => Column<T>[];
   rowKey: (row: T) => string | number;
   /** Section title in the full report; tabs without one are left out of it. */
   inFullReport?: string;
-  /** A drop-down that narrows the rows, e.g. by kind of stock movement. */
+  /** A drop-down over the rows: narrow them (by kind of movement) or regroup them (merge categories). */
   filter?: {
     label: string;
+    /** The first option, which shows the rows as loaded. */
     all: string;
     options: { value: string; label: string }[];
-    matches: (row: T, value: string) => boolean;
+    apply: (rows: T[], value: string) => T[];
   };
 }
 
@@ -89,8 +90,6 @@ export const reportTab = <T>(tab: ReportTab<T>) => tab as unknown as ReportTab<u
 export interface Shop {
   /** Window and document title. */
   title: string;
-  /** One line under the art on the sign-in screen. */
-  tagline: string;
   /** The shop's own sidebar pages, listed after the reports. */
   navItems: NavItem[];
   /** Pages only an admin opens, matching the paths of `navItems`. */
@@ -98,16 +97,19 @@ export interface Shop {
   /** The till. */
   PosPage: ComponentType;
   Readout: ComponentType<ReadoutProps>;
-  /** The picture on the sign-in screen. */
+  /** The left half of the sign-in screen: the shop's picture and what the app is for. */
   LoginArt: ComponentType;
   /** The item lines of a receipt. */
   ReceiptItems: ComponentType<{ items: SaleItem[] }>;
   /** The made-up sale the receipt preview in the settings shows. */
   sampleSale: Pick<Sale, "items" | "total" | "payments" | "paid" | "change_due">;
   units: Units;
-  /** The line rows of the purchase invoice form; a hook, called once per form. */
-  usePurchaseLines: () => PurchaseLines;
+  /** The line rows of the purchase invoice form; a hook, called once per form. `productId` pre-fills
+   *  the first line where the shop supports it. */
+  usePurchaseLines: (productId?: number) => PurchaseForm;
   /** Columns of one invoice's lines, on screen and printed. */
   purchaseItemColumns: (purchase: Purchase) => Column<PurchaseItem>[];
   reportTabs: ReportTab<unknown>[];
+  /** Settings only this shop has, shown as their own section on the settings page. */
+  SettingsSection?: ComponentType<{ draft: Settings; set: (key: string) => (value: string) => void }>;
 }

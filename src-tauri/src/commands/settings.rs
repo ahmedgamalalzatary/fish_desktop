@@ -12,6 +12,11 @@ const KEYS: &[&str] = &[
     "currency",
 ];
 
+/// A setting the app knows: a shared one or one the shop adds.
+fn is_setting(key: &str) -> bool {
+    KEYS.contains(&key) || crate::shop::SETTINGS_KEYS.contains(&key)
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> AppResult<HashMap<String, String>> {
     state.user()?;
@@ -27,7 +32,7 @@ pub fn update_settings(state: State<AppState>, values: HashMap<String, String>) 
     let mut db = state.db.lock().unwrap();
     let tx = db.transaction()?;
     for (key, value) in &values {
-        if !KEYS.contains(&key.as_str()) && !crate::shop::SETTINGS_KEYS.contains(&key.as_str()) {
+        if !is_setting(key) {
             return invalid(format!("إعداد غير معروف: {key}"));
         }
         tx.execute(
@@ -46,4 +51,18 @@ pub fn backup_database(state: State<AppState>, path: String) -> AppResult<()> {
     let _ = std::fs::remove_file(&path);
     state.db.lock().unwrap().execute("VACUUM INTO ?1", [path])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn takes_shared_keys_and_the_shop_s_own_but_nothing_else() {
+        assert!(is_setting("currency"));
+        assert!(!is_setting("admin_password"));
+        for key in crate::shop::SETTINGS_KEYS {
+            assert!(is_setting(key), "{key}");
+        }
+    }
 }

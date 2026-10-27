@@ -343,7 +343,16 @@ function Balance({ amount }: { amount: number }) {
 // ---- Purchase invoice form ----
 
 /** Records goods received from a supplier; the shop decides what a line is (`shop.usePurchaseLines`). */
-export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+/** `productId` pre-fills the first line where the shop supports it (from its stock page). */
+export function PurchaseFormModal({
+  productId,
+  onClose,
+  onSaved,
+}: {
+  productId?: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { settings } = useSession();
   const toast = useToast();
   const [suppliers, reloadSuppliers] = useResource(useCallback(() => api.listSuppliers(), []));
@@ -352,7 +361,7 @@ export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; o
   const [newSupplier, setNewSupplier] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [note, setNote] = useState("");
-  const lines = shop.usePurchaseLines();
+  const lines = shop.usePurchaseLines(productId);
   const [payInFull, setPayInFull] = useState(true);
   const [paidText, setPaidText] = useState("");
   const [busy, setBusy] = useState(false);
