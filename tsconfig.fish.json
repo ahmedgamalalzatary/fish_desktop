@@ -3,5 +3,15 @@
   "compilerOptions": {
     "paths": { "@shop": ["./src/shops/fish"], "@shop/*": ["./src/shops/fish/*"] }
   },
-  "exclude": ["tests/shops.test.ts", "src/shops/mobile", "tests/mobile"]
+  "include": [
+    "src/*.ts",
+    "src/*.tsx",
+    "src/components",
+    "src/lib",
+    "src/pages",
+    "src/shops/fish",
+    "tests/*.ts",
+    "tests/fish"
+  ],
+  "exclude": ["tests/shops.test.ts"]
 }

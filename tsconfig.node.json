@@ -8,5 +8,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["vite.config.ts", "shops.ts", "tests/shops.test.ts"]
+  "include": ["vite.config.ts", "shops.ts", "scripts", "tests/shops.test.ts"]
 }

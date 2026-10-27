@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "identifier": "com.pos.template",
   "build": {
-    "beforeDevCommand": "echo Pick a shop, e.g. npm run dev:mobile && exit 1",
+    "beforeDevCommand": "echo Pick a shop, e.g. npm run dev mobile && exit 1",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "echo Pick a shop, e.g. npm run build:mobile && exit 1",
+    "beforeBuildCommand": "echo Pick a shop, e.g. npm run build mobile && exit 1",
     "frontendDist": "../dist"
   },
   "app": {

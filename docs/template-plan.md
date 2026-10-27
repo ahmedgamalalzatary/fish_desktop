@@ -6,8 +6,9 @@ part that is truly its own: what a "product" is, how stock is counted, how the s
 and its look.
 
 ```
-npm run dev:fish      npm run build:fish      →  Fish POS installer
-npm run dev:mobile    npm run build:mobile    →  Mobile POS installer
+npm run dev fish      npm run build fish      →  Fish POS installer
+npm run dev mobile    npm run build mobile    →  Mobile POS installer
+npm run check                                 →  typecheck + lint + tests for every shop
 ```
 
 ## Where we start (state on 2026-10-27)
@@ -347,16 +348,21 @@ the profit report.
 
 ### Slice 6a — Local checks
 
-- `npm run check` = typecheck + lint + tests for each shop (`vite`/`tsc` per mode,
-  `cargo clippy/test --features <shop>`).
-- Small script `scripts/shops.mjs` that lists `src/shops/*` so scripts loop over shops instead of
-  hard-coding names.
+- `scripts/shops.ts` runs a task for every shop in `src/shops/`, or for one:
+  `npm run check` / `npm run check fish`, `npm run dev mobile`, `npm run build fish`, `npm run web fish`
+  (frontend only). The commands each task runs live in `taskCommands()` in `shops.ts`, tested in
+  `tests/shops.test.ts`; no script names a shop.
+- Each shop has `tsconfig.<shop>.json` (shared folders + its own); `tsconfig.json` is the editor's view
+  (mobile). `vitest --mode <shop>` runs the shared tests plus `tests/<shop>/`.
+- `npm run format` / `format:check` use width 110 on the source folders only.
 
 ### Slice 6b — GitHub Actions
 
-- On push / PR: matrix over shops → `npm ci`, `npm run check:<shop>`.
-- On tag `fish-v*` / `mobile-v*`: build that shop on `windows-latest` with `tauri-apps/tauri-action`,
-  attach the NSIS installer to a GitHub release.
+- `.github/workflows/ci.yml`, on every push and PR: `npm run shops` builds the matrix, formatting is
+  checked once, then `npm run check <shop>` runs per shop on `windows-latest`.
+- `.github/workflows/release.yml`, on a tag `<shop>-v<version>`: `node scripts/shops.ts release <tag>`
+  refuses a tag whose version differs from the shop's config, then checks the shop and builds it with
+  `tauri-apps/tauri-action`, attaching the NSIS installer to a GitHub release for that tag.
 
 **Done when:** a PR shows a green check per shop; pushing a tag produces an installer.
 

@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => ({
     watch: { ignored: ["**/src-tauri/**"] },
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    // The shared tests and this shop's own.
+    include: ["tests/*.test.ts", `tests/${mode}/**/*.test.ts`],
   },
 }));

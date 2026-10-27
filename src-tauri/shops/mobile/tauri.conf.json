@@ -5,7 +5,7 @@
   "identifier": "com.mobileshop.pos",
   "build": {
     "beforeDevCommand": "vite --mode mobile",
-    "beforeBuildCommand": "tsc --noEmit && vite build --mode mobile"
+    "beforeBuildCommand": "tsc --noEmit -p tsconfig.mobile.json && vite build --mode mobile"
   },
   "app": {
     "windows": [

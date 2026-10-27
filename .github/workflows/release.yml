@@ -1,0 +1,42 @@
+# Pushing a tag `<shop>-v<version>` (e.g. fish-v0.3.0) checks and builds that shop and publishes its
+# installer as a GitHub release. The version in the tag must match src-tauri/shops/<shop>/tauri.conf.json.
+name: Release
+
+on:
+  push:
+    tags: ["*-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - id: tag
+        run: node scripts/shops.ts release ${{ github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ steps.tag.outputs.shop }}
+      - run: npm ci
+      - run: npm run check ${{ steps.tag.outputs.shop }}
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ steps.tag.outputs.name }} ${{ steps.tag.outputs.version }}
+          releaseBody: Windows installer for ${{ steps.tag.outputs.name }} ${{ steps.tag.outputs.version }}.
+          releaseDraft: false
+          args: >-
+            --config src-tauri/shops/${{ steps.tag.outputs.shop }}/tauri.conf.json
+            --features ${{ steps.tag.outputs.shop }}

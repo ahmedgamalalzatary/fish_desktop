@@ -20,10 +20,19 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* The shop the editor and `tsc` see; tsconfig.<shop>.json points it at another shop. */
+    /* The shop the editor sees. `npm run typecheck` checks each shop with its tsconfig.<shop>.json. */
     "paths": { "@shop": ["./src/shops/mobile"], "@shop/*": ["./src/shops/mobile/*"] }
   },
-  "include": ["src", "tests"],
-  "exclude": ["tests/shops.test.ts", "src/shops/fish", "tests/fish"],
+  "include": [
+    "src/*.ts",
+    "src/*.tsx",
+    "src/components",
+    "src/lib",
+    "src/pages",
+    "src/shops/mobile",
+    "tests/*.ts",
+    "tests/mobile"
+  ],
+  "exclude": ["tests/shops.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

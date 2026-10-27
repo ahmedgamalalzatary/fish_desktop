@@ -1,7 +1,7 @@
 # Manual smoke test
 
 Run before every release and at the end of every phase of `docs/template-plan.md`, once per shop
-(`npm run dev:<shop>`). Use a copy of the shop's fixture from `tests/fixtures/` as the database when
+(`npm run dev <shop>`). Use a copy of the shop's fixture from `tests/fixtures/` as the database when
 checking an upgrade, and a fresh database when checking first run. Tick every line; anything odd is a bug.
 
 ## Every shop

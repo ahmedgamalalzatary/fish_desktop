@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": { "@shop": ["./src/shops/mobile"], "@shop/*": ["./src/shops/mobile/*"] }
+  },
+  "include": [
+    "src/*.ts",
+    "src/*.tsx",
+    "src/components",
+    "src/lib",
+    "src/pages",
+    "src/shops/mobile",
+    "tests/*.ts",
+    "tests/mobile"
+  ],
+  "exclude": ["tests/shops.test.ts"]
+}
