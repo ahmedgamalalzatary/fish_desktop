@@ -1,4 +1,7 @@
-// Mirrors the Rust command payloads. Money is integer cents, quantities are whole pieces.
+// Mirrors the Rust command payloads. Money is integer cents. What a sale or an invoice line holds is the
+// shop's (src/shops/<shop>/types.ts), reached through `@shop`.
+
+import type { PurchaseItem, PurchaseLine, SaleItem } from "@shop/types";
 
 export type Role = "admin" | "cashier";
 export type PaymentMethod = "cash" | "card" | "wallet";
@@ -24,40 +27,6 @@ export interface UserInput {
   password: string | null;
 }
 
-/** One physical phone in stock. Stock is the number of these. */
-export interface Phone {
-  id: number;
-  product_id: number;
-  serial: string;
-  storage: string;
-  color: string;
-  /** Battery health in percent; null when not recorded (e.g. a new phone). */
-  battery: number | null;
-  price: number;
-  /** Buy price; 0 for cashiers, who never see it. */
-  cost: number;
-  /** Set when the phone came in on a supplier invoice, which then fixes its buy price. */
-  purchase_id: number | null;
-  created_at: string;
-}
-
-/** A phone model, e.g. "Samsung Galaxy S24 Ultra", with its phones in stock. */
-export interface Product {
-  id: number;
-  name: string;
-  active: boolean;
-  phones: Phone[];
-}
-
-export interface PhoneInput {
-  serial: string;
-  storage: string;
-  color: string;
-  battery: number | null;
-  price: number;
-  cost: number;
-}
-
 /** What the customer handed over with one method. Only cash may be more than due; the rest is change. */
 export interface PaymentInput {
   method: PaymentMethod;
@@ -68,16 +37,6 @@ export interface PaymentInput {
 export interface Payment {
   method: PaymentMethod;
   amount: number;
-}
-
-/** A phone as sold, copied at the time of sale. */
-export interface SaleItem {
-  product_name: string;
-  serial: string;
-  storage: string;
-  color: string;
-  battery: number | null;
-  price: number;
 }
 
 export interface Sale {
@@ -110,7 +69,7 @@ export interface ReportSummary {
   sales_count: number;
   revenue: number;
   cost: number;
-  /** Revenue minus the cost of the pieces sold. */
+  /** Revenue minus the cost of what was sold. */
   profit: number;
   units_sold: number;
   expenses: number;
@@ -161,15 +120,6 @@ export interface Expense {
   user_name: string;
 }
 
-export interface ProductReportRow {
-  product_id: number;
-  name: string;
-  units: number;
-  revenue: number;
-  cost: number;
-  profit: number;
-}
-
 export interface CashierReportRow {
   user_id: number;
   name: string;
@@ -178,25 +128,6 @@ export interface CashierReportRow {
   profit: number;
   first_sale: string;
   last_sale: string;
-}
-
-export type MovementReason = "added" | "purchase" | "sale" | "removed";
-
-export interface MovementRow {
-  id: number;
-  created_at: string;
-  product_name: string;
-  serial: string;
-  storage: string;
-  color: string;
-  change_qty: number;
-  reason: MovementReason;
-  cost_total: number | null;
-  note: string | null;
-  sale_id: number | null;
-  purchase_id: number | null;
-  supplier_name: string | null;
-  user_name: string;
 }
 
 export interface Supplier {
@@ -222,17 +153,12 @@ export interface SupplierInput {
   active: boolean;
 }
 
-/** One phone on a supplier invoice; its `cost` is what the supplier charged. */
-export interface PurchaseItemInput extends PhoneInput {
-  product_id: number;
-}
-
 export interface PurchaseInput {
   supplier_id: number;
   invoice_no: string;
   note: string;
   paid: number;
-  items: PurchaseItemInput[];
+  items: PurchaseLine[];
 }
 
 export interface PurchaseSummary {
@@ -241,7 +167,7 @@ export interface PurchaseSummary {
   supplier_id: number;
   supplier_name: string;
   invoice_no: string;
-  /** Phones on the invoice. */
+  /** Lines on the invoice, counted the shop's way. */
   items_count: number;
   total: number;
   /** Paid while receiving the invoice; later payments go to the supplier's account. */
@@ -251,15 +177,7 @@ export interface PurchaseSummary {
 
 export interface Purchase extends PurchaseSummary {
   note: string;
-  items: {
-    product_name: string;
-    serial: string;
-    storage: string;
-    color: string;
-    battery: number | null;
-    cost: number;
-    status: "in_stock" | "sold" | "removed";
-  }[];
+  items: PurchaseItem[];
 }
 
 export interface StatementRow {

@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { save } from "@tauri-apps/plugin-dialog";
 import { DatabaseBackup } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -7,30 +8,7 @@ import { api } from "../lib/api";
 import { isoDate } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
-import type { Sale, Settings } from "../lib/types";
-
-const sampleSale: Sale = {
-  id: 1024,
-  created_at: "2026-01-01 12:30:00",
-  cashier_name: "الكاشير",
-  total: 3245000,
-  payments: [
-    { method: "cash", amount: 1245000 },
-    { method: "card", amount: 2000000 },
-  ],
-  paid: 3250000,
-  change_due: 5000,
-  items: [
-    {
-      product_name: "Samsung Galaxy S24 Ultra",
-      serial: "352914110482316",
-      storage: "256GB",
-      color: "رمادي",
-      battery: 94,
-      price: 3245000,
-    },
-  ],
-};
+import type { Settings } from "../lib/types";
 
 function Section({
   title,
@@ -125,7 +103,15 @@ export function SettingsPage() {
             </Field>
           </div>
           <div className="w-[300px] rounded-lg border border-line shadow-sm">
-            <Receipt sale={sampleSale} settings={draft} />
+            <Receipt
+              sale={{
+                id: 1024,
+                created_at: "2026-01-01 12:30:00",
+                cashier_name: "الكاشير",
+                ...shop.sampleSale,
+              }}
+              settings={draft}
+            />
           </div>
         </div>
       </Section>

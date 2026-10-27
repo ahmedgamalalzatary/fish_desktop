@@ -13,18 +13,18 @@ import { NavLink } from "react-router-dom";
 import { useSession } from "../lib/session";
 import type { NavItem } from "../lib/shop";
 
-const nav: NavItem[] = [
-  { to: "/pos", label: "البيع", icon: ShoppingBasket, cashier: true },
-  { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
-  { to: "/reports", label: "التقارير", icon: ChartColumnBig },
-  ...shop.navItems,
-  { to: "/purchases", label: "المشتريات", icon: Truck },
-  { to: "/employees", label: "الموظفون", icon: UsersRound },
-  { to: "/settings", label: "الإعدادات", icon: Settings },
-];
-
 export function Shell({ children }: { children: ReactNode }) {
   const { user, settings, logout } = useSession();
+  // Built here, not at load time: the shop's modules import shared code that imports `@shop` back.
+  const nav: NavItem[] = [
+    { to: "/pos", label: "البيع", icon: ShoppingBasket, cashier: true },
+    { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
+    { to: "/reports", label: "التقارير", icon: ChartColumnBig },
+    ...shop.navItems,
+    { to: "/purchases", label: "المشتريات", icon: Truck },
+    { to: "/employees", label: "الموظفون", icon: UsersRound },
+    { to: "/settings", label: "الإعدادات", icon: Settings },
+  ];
   const items = user.role === "admin" ? nav : nav.filter((n) => n.cashier);
 
   return (

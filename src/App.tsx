@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import { useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
@@ -7,12 +8,9 @@ import type { SessionUser } from "./lib/types";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { LoginPage } from "./pages/LoginPage";
-import { PosPage } from "./pages/PosPage";
-import { ProductsPage } from "./pages/ProductsPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { StockPage } from "./pages/StockPage";
 
 export default function App() {
   const [state, setState] = useState<{
@@ -39,13 +37,14 @@ export default function App() {
       <HashRouter>
         <Shell>
           <Routes>
-            <Route path="/pos" element={<PosPage />} />
+            <Route path="/pos" element={<shop.PosPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             {isAdmin && (
               <>
                 <Route path="/reports" element={<ReportsPage />} />
-                <Route path="/products" element={<ProductsPage />} />
-                <Route path="/stock" element={<StockPage />} />
+                {shop.adminRoutes.map(({ path, Page }) => (
+                  <Route key={path} path={path} element={<Page />} />
+                ))}
                 <Route path="/purchases" element={<PurchasesPage />} />
                 <Route path="/employees" element={<EmployeesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

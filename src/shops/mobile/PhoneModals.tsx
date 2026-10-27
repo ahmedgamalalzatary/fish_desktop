@@ -1,7 +1,8 @@
 import { LogOut, Pencil, Plus, Smartphone } from "lucide-react";
 import { useState } from "react";
-import { api } from "../lib/api";
-import { formatAmount, formatMoney, formatPhones, phoneDetails } from "../lib/format";
+import { api } from "./api";
+import { formatAmount, formatMoney } from "../../lib/format";
+import { formatPhones, phoneDetails } from "./format";
 import {
   colorOptions,
   draftFromPhone,
@@ -11,14 +12,14 @@ import {
   storageOptions,
   useReadDrafts,
   type PhoneDraft,
-} from "../lib/phones";
-import { useSession } from "../lib/session";
-import { stockColumns, type StockRow } from "../lib/stock";
-import { errorMessage, useToast } from "../lib/toast";
-import type { Product } from "../lib/types";
-import { DataTable, type Column } from "./DataTable";
+} from "./phones";
+import { useSession } from "../../lib/session";
+import { stockColumns, type StockRow } from "./stock";
+import { errorMessage, useToast } from "../../lib/toast";
+import type { Product } from "./types";
+import { DataTable, type Column } from "../../components/DataTable";
 import { PhoneLines } from "./PhoneLines";
-import { Button, Empty, Field, Input, Modal, Select } from "./ui";
+import { Button, Empty, Field, Input, Modal, Select } from "../../components/ui";
 
 /**
  * Every phone of one model in stock, with its specs, and what can be done with each. Opening a

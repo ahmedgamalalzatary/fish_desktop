@@ -1,5 +1,5 @@
-import { parseCount, parseMoney } from "./format";
-import { useToast } from "./toast";
+import { parseCount, parseMoney } from "../../lib/format";
+import { useToast } from "../../lib/toast";
 import type { Phone, PhoneInput } from "./types";
 
 /** A phone being typed in: every field is still text. `productId` is used where the model is picked per row. */

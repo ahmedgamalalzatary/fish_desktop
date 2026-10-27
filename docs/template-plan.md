@@ -103,20 +103,27 @@ suppliers, purchases, supplier payments, sales, sale payments, sale items, produ
 expenses), so a shop that forgets a shared table fails its tests. The shared tests never touch a shop's
 own tables; they get stock to sell and lines to buy from `shop::testing`.
 
-### TypeScript: `src/shops/<shop>/index.ts` exports
+### TypeScript: `src/shops/<shop>/`
 
-| Export                                       | Used by                         |
-| -------------------------------------------- | ------------------------------- |
-| `shop` (name, tagline, units label)          | Login, Settings, reports        |
-| `navItems`, `routes`                         | `Shell.tsx`, `App.tsx`          |
-| `PosCatalog` + `cartToSale()`                | shared POS page / checkout      |
-| `ReceiptItems`                               | `Receipt.tsx`                   |
-| `PurchaseLines`, `purchaseItemColumns`       | `PurchasesPage.tsx` invoice tab |
-| `reportTabs`                                 | `ReportsPage.tsx`               |
-| `Readout` (totals display: `Lcd` / `Screen`) | POS, checkout, reports          |
-| `LoginArt`                                   | `LoginPage.tsx`                 |
-| `api` + types for shop-only commands         | shop pages                      |
-| `theme.css` (fonts + token values)           | `main.tsx`                      |
+`index.ts` exports `shop`, checked against the `Shop` interface in `src/lib/shop.ts`:
+
+| Field                                                      | Used by                             |
+| ---------------------------------------------------------- | ----------------------------------- |
+| `title`, `tagline`, `LoginArt`                             | window title, `LoginPage.tsx`       |
+| `navItems`, `adminRoutes`, `PosPage`                       | `Shell.tsx`, `App.tsx`              |
+| `Readout` (totals display: `Lcd` / phone screen)           | till, checkout, purchases, reports  |
+| `ReceiptItems`, `sampleSale`                               | `Receipt.tsx`, settings preview     |
+| `units` (noun, product, per-unit price, format, count)     | purchases list, reports wording     |
+| `usePurchaseLines()`, `purchaseItemColumns()`              | `PurchasesPage.tsx` form and detail |
+| `reportTabs` (`reportTab(...)`, placed "sales" or "stock") | `ReportsPage.tsx`, full report      |
+
+Next to it: `types.ts` (must export `SaleItem`, `Cart`, `PurchaseLine`, `PurchaseItem`, which the shared
+types import through `@shop/types`), `api.ts` (the shared `api` plus the shop's commands), `theme.css`
+(fonts and colour values, imported by `src/index.css`). The till uses the shared `CheckoutModal`,
+`ReceiptModal`, `TodaySalesModal` and `PaymentPicker` from `src/components/Checkout.tsx`.
+
+Shop modules import shared code that imports `@shop` back, so shared code reads `shop` only inside
+components and functions, and shop files never import `@shop` themselves.
 
 ---
 

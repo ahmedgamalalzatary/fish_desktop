@@ -1,5 +1,5 @@
-import type { Column } from "../components/DataTable";
-import { formatAmount, formatDateTime } from "./format";
+import type { Column } from "../../components/DataTable";
+import { formatAmount, formatDateTime } from "../../lib/format";
 import type { Phone, Product } from "./types";
 
 /** One phone in stock together with its model. */

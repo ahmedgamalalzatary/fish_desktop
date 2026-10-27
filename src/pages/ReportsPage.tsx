@@ -10,7 +10,6 @@ import { cx } from "../lib/cx";
 import { section, type DocumentSection } from "../lib/document";
 import { expenseByUserColumns, expenseColumns, expensesByUser } from "../lib/expenses";
 import { purchaseColumns, supplierReportColumns } from "../lib/purchases";
-import { stockColumns, stockRows, type StockRow } from "../lib/stock";
 import { useResource } from "../lib/useResource";
 import { Empty, PageHeader, Panel, Segmented, Select } from "../components/ui";
 import { api } from "../lib/api";
@@ -18,23 +17,20 @@ import {
   formatAmount,
   formatDateTime,
   formatMoney,
-  formatPhones,
   isoDate,
-  movementLabels,
   paymentLabels,
   paymentNames,
 } from "../lib/format";
+import { allTabs, narrowRows, type Tab } from "../lib/reportTabs";
+import type { ReportTab } from "../lib/shop";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
 import type {
   CashierReportRow,
   DailyRow,
   Expense,
-  MovementReason,
-  MovementRow,
   PeriodGroup,
   PeriodRow,
-  ProductReportRow,
   PurchasedItemRow,
   PurchaseSummary,
   ReportSummary,
@@ -42,33 +38,8 @@ import type {
   SaleSummary,
   SupplierReportRow,
 } from "../lib/types";
-import { ReceiptModal } from "./PosPage";
+import { ReceiptModal } from "../components/Checkout";
 import { PurchaseDetailModal } from "./PurchasesPage";
-
-type Tab =
-  | "summary"
-  | "profit"
-  | "sales"
-  | "products"
-  | "cashiers"
-  | "purchases"
-  | "suppliers"
-  | "expenses"
-  | "stock"
-  | "movements";
-
-const tabs: { value: Tab; label: string }[] = [
-  { value: "summary", label: "الملخص" },
-  { value: "profit", label: "الأرباح" },
-  { value: "sales", label: "الفواتير" },
-  { value: "products", label: "المنتجات" },
-  { value: "cashiers", label: "الموظفون" },
-  { value: "purchases", label: "المشتريات" },
-  { value: "suppliers", label: "الموردون" },
-  { value: "expenses", label: "المصروفات" },
-  { value: "stock", label: "المخزون" },
-  { value: "movements", label: "حركة المخزون" },
-];
 
 const groupLabels: Record<PeriodGroup, string> = { day: "يومي", month: "شهري", year: "سنوي" };
 
@@ -86,14 +57,13 @@ interface ReportData {
   summary: ReportSummary;
   daily: DailyRow[];
   sales: SaleSummary[];
-  products: ProductReportRow[];
   cashiers: CashierReportRow[];
   purchases: PurchaseSummary[];
   suppliers: SupplierReportRow[];
   purchasedItems: PurchasedItemRow[];
   expenses: Expense[];
-  stock: StockRow[];
-  movements: MovementRow[];
+  /** The rows of each of the shop's report tabs, in the order of `shop.reportTabs`. */
+  shopRows: unknown[][];
 }
 
 const sum = <T,>(rows: T[], f: (r: T) => number) => rows.reduce((s, r) => s + f(r), 0);
@@ -108,50 +78,29 @@ export function ReportsPage() {
   const [tab, setTab] = useState<Tab>("summary");
   const [group, setGroup] = useState<PeriodGroup>("day");
   const [purchasesBy, setPurchasesBy] = useState<"invoice" | "item">("invoice");
-  const [reason, setReason] = useState<MovementReason | "">("");
+  // The value picked in each shop tab's filter, by tab; "" shows every row.
+  const [filters, setFilters] = useState<Record<string, string>>({});
   const [openSale, setOpenSale] = useState<Sale | null>(null);
   const [openPurchase, setOpenPurchase] = useState<number | null>(null);
   const currency = settings.currency;
+  const units = shop.units;
+  const shopTabs = shop.reportTabs;
+  const tabs = allTabs(shopTabs);
 
   const fetchReports = useCallback(async (): Promise<ReportData> => {
-    const [
-      summary,
-      daily,
-      sales,
-      products,
-      cashiers,
-      purchases,
-      suppliers,
-      purchasedItems,
-      expenses,
-      stock,
-      movements,
-    ] = await Promise.all([
-      api.reportSummary(range),
-      api.reportDaily(range),
-      api.listSales(range),
-      api.reportByProduct(range),
-      api.reportByCashier(range),
-      api.listPurchases(range),
-      api.reportBySupplier(range),
-      api.reportPurchasedItems(range),
-      api.listExpenses(range),
-      api.listProducts().then(stockRows),
-      api.reportMovements(range),
-    ]);
-    return {
-      summary,
-      daily,
-      sales,
-      products,
-      cashiers,
-      purchases,
-      suppliers,
-      purchasedItems,
-      expenses,
-      stock,
-      movements,
-    };
+    const [summary, daily, sales, cashiers, purchases, suppliers, purchasedItems, expenses, shopRows] =
+      await Promise.all([
+        api.reportSummary(range),
+        api.reportDaily(range),
+        api.listSales(range),
+        api.reportByCashier(range),
+        api.listPurchases(range),
+        api.reportBySupplier(range),
+        api.reportPurchasedItems(range),
+        api.listExpenses(range),
+        Promise.all(shop.reportTabs.map((t) => t.load(range))),
+      ]);
+    return { summary, daily, sales, cashiers, purchases, suppliers, purchasedItems, expenses, shopRows };
   }, [range]);
   const [data] = useResource(fetchReports);
   // Loaded on its own so switching between daily, monthly and yearly does not reload everything.
@@ -159,9 +108,10 @@ export function ReportsPage() {
 
   // ---- Column definitions, shared by the screen and the printed documents ----
 
-  const movements = useMemo(
-    () => (data ? data.movements.filter((m) => !reason || m.reason === reason) : []),
-    [data, reason],
+  // Each shop tab's rows, narrowed by its filter.
+  const shopRows = useMemo(
+    () => shopTabs.map((t, i) => narrowRows(t, data?.shopRows[i] ?? [], filters[t.value] ?? "")),
+    [data, filters, shopTabs],
   );
 
   if (!data) return null;
@@ -217,39 +167,6 @@ export function ReportsPage() {
     },
   ];
 
-  const productColumns: Column<ProductReportRow>[] = [
-    { header: "الموديل", cell: (r) => r.name },
-    {
-      header: "الأجهزة المباعة",
-      numeric: true,
-      cell: (r) => r.units,
-      total: sum(data.products, (r) => r.units),
-    },
-    {
-      header: "المبيعات",
-      numeric: true,
-      cell: (r) => formatAmount(r.revenue),
-      total: formatAmount(s.revenue),
-    },
-    {
-      header: "التكلفة",
-      numeric: true,
-      cell: (r) => formatAmount(r.cost),
-      total: formatAmount(s.cost),
-    },
-    {
-      header: "الربح",
-      numeric: true,
-      cell: (r) => formatAmount(r.profit),
-      total: formatAmount(s.profit),
-    },
-    {
-      header: "الهامش",
-      numeric: true,
-      cell: (r) => margin(r.profit, r.revenue),
-    },
-  ];
-
   const cashierColumns: Column<CashierReportRow>[] = [
     { header: "الموظف", cell: (r) => r.name },
     {
@@ -285,62 +202,21 @@ export function ReportsPage() {
     },
   ];
 
-  const stockCols = stockColumns(data.stock);
-
-  const movementColumns: Column<MovementRow>[] = [
-    {
-      header: "التاريخ",
-      cell: (r) => <span dir="ltr">{formatDateTime(r.created_at)}</span>,
-    },
-    { header: "الموديل", cell: (r) => r.product_name },
-    { header: "الرقم التسلسلي", cell: (r) => <span dir="ltr">{r.serial}</span> },
-    { header: "الحركة", cell: (r) => movementLabels[r.reason] },
-    {
-      header: "الكمية",
-      numeric: true,
-      cell: (r) => (
-        <span
-          dir="ltr"
-          className={r.change_qty < 0 ? "text-danger print:text-black" : "text-ok print:text-black"}
-        >
-          {r.change_qty > 0 ? "+" : "−"}
-          {Math.abs(r.change_qty)}
-        </span>
-      ),
-    },
-    {
-      header: "التكلفة",
-      numeric: true,
-      cell: (r) => (r.cost_total === null ? "—" : formatAmount(r.cost_total)),
-    },
-    {
-      header: "ملاحظة",
-      cell: (r) =>
-        r.note ??
-        (r.sale_id
-          ? `فاتورة #${r.sale_id}`
-          : r.purchase_id
-            ? `شراء #${r.purchase_id} · ${r.supplier_name}`
-            : ""),
-    },
-    { header: "بواسطة", cell: (r) => r.user_name },
-  ];
-
   const figures = [
     { label: "المبيعات", value: formatMoney(s.revenue, currency) },
     { label: "صافي الربح", value: formatMoney(s.net_profit, currency) },
     { label: "المشتريات", value: formatMoney(s.purchases_cost, currency) },
     { label: "المصروفات", value: formatMoney(s.expenses, currency) },
     { label: "إجمالي الربح", value: formatMoney(s.profit, currency) },
-    { label: "الأجهزة المباعة", value: formatPhones(s.units_sold) },
+    { label: `${units.noun} المباعة`, value: units.count(s.units_sold) },
     { label: "عدد الفواتير", value: s.sales_count },
     {
       label: "متوسط الفاتورة",
       value: formatMoney(s.sales_count ? Math.round(s.revenue / s.sales_count) : 0, currency),
     },
-    { label: "تكلفة الأجهزة المباعة", value: formatMoney(s.cost, currency) },
+    { label: `تكلفة ${units.noun} المباعة`, value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
-    { label: "الأجهزة المشتراة", value: formatPhones(s.purchases_units) },
+    { label: `${units.noun} المشتراة`, value: units.count(s.purchases_units) },
     { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
     {
       label: "مستحق للموردين حالياً",
@@ -359,17 +235,17 @@ export function ReportsPage() {
   const periodRows = periods ?? [];
 
   const purchasedItemColumns: Column<PurchasedItemRow>[] = [
-    { header: "الموديل", cell: (r) => r.name },
+    { header: units.product, cell: (r) => r.name },
     {
-      header: "الأجهزة المشتراة",
+      header: `${units.noun} المشتراة`,
       numeric: true,
-      cell: (r) => r.units,
-      total: sum(data.purchasedItems, (r) => r.units),
+      cell: (r) => units.format(r.units),
+      total: units.format(sum(data.purchasedItems, (r) => r.units)),
     },
     {
-      header: "متوسط سعر الجهاز",
+      header: units.perUnit,
       numeric: true,
-      cell: (r) => (r.units ? formatAmount(Math.round(r.cost / r.units)) : "—"),
+      cell: (r) => (r.units ? formatAmount(Math.round((r.cost * units.per) / r.units)) : "—"),
     },
     {
       header: "التكلفة",
@@ -397,10 +273,10 @@ export function ReportsPage() {
       total: formatAmount(s.revenue),
     },
     {
-      header: "الأجهزة المباعة",
+      header: `${units.noun} المباعة`,
       numeric: true,
-      cell: (r) => r.units_sold,
-      total: s.units_sold,
+      cell: (r) => units.format(r.units_sold),
+      total: units.format(s.units_sold),
     },
     {
       header: "إجمالي الربح",
@@ -425,6 +301,9 @@ export function ReportsPage() {
   // ---- Per-tab document for print/PDF ----
 
   const tabSections: Record<Tab, DocumentSection[]> = {
+    ...Object.fromEntries(
+      shopTabs.map((t, i) => [t.value, [section({ columns: t.columns(shopRows[i], s), rows: shopRows[i] })]]),
+    ),
     summary: [
       section({
         title: "المبيعات حسب طريقة الدفع",
@@ -439,7 +318,6 @@ export function ReportsPage() {
     ],
     profit: [section({ title: `الأرباح · ${groupLabels[group]}`, columns: periodColumns, rows: periodRows })],
     sales: [section({ columns: salesColumns, rows: data.sales })],
-    products: [section({ columns: productColumns, rows: data.products })],
     cashiers: [section({ columns: cashierColumns, rows: data.cashiers })],
     purchases: [
       section({ title: "حسب الصنف", columns: purchasedItemColumns, rows: data.purchasedItems }),
@@ -450,11 +328,22 @@ export function ReportsPage() {
       section({ title: "حسب الموظف", columns: expenseUserCols, rows: expenseUsers }),
       section({ title: "المصروفات", columns: expenseCols, rows: data.expenses }),
     ],
-    stock: [section({ columns: stockCols, rows: data.stock })],
-    movements: [section({ columns: movementColumns, rows: movements })],
   };
   const tabLabel = tabs.find((t) => t.value === tab)!.label;
-  const isSnapshot = tab === "stock";
+  const isSnapshot = shopTabs.some((t) => t.value === tab && t.snapshot);
+  // The shop's tabs in the full report, all their rows whatever the filter.
+  const fullSections = (place: ReportTab<unknown>["place"]) =>
+    shopTabs.flatMap((t, i) =>
+      t.place === place && t.inFullReport
+        ? [
+            section({
+              title: t.inFullReport,
+              columns: t.columns(data.shopRows[i], s),
+              rows: data.shopRows[i],
+            }),
+          ]
+        : [],
+    );
   const fileRange = range.from === range.to ? range.from : `${range.from}_${range.to}`;
 
   const tabDocument = () => (
@@ -478,11 +367,7 @@ export function ReportsPage() {
       sections={[
         ...tabSections.summary,
         ...tabSections.profit,
-        section({
-          title: "المنتجات",
-          columns: productColumns,
-          rows: data.products,
-        }),
+        ...fullSections("sales"),
         section({
           title: "الموظفون",
           columns: cashierColumns,
@@ -508,11 +393,7 @@ export function ReportsPage() {
           columns: expenseCols,
           rows: data.expenses,
         }),
-        section({
-          title: "المخزون الحالي",
-          columns: stockCols,
-          rows: data.stock,
-        }),
+        ...fullSections("stock"),
       ]}
     />
   );
@@ -594,7 +475,7 @@ export function ReportsPage() {
               <h2 className="mb-4 font-semibold">البضاعة المشتراة</h2>
               <dl className="flex flex-col gap-3 text-sm">
                 <Line label="المشتريات" value={formatMoney(s.purchases_cost, currency)} strong />
-                <Line label="الأجهزة المستلمة" value={formatPhones(s.purchases_units)} />
+                <Line label={`${units.noun} المستلمة`} value={units.count(s.purchases_units)} />
                 <Line label="مدفوع للموردين في الفترة" value={formatMoney(s.supplier_paid, currency)} />
                 <Line
                   label="مستحق للموردين حالياً"
@@ -605,8 +486,8 @@ export function ReportsPage() {
                 />
               </dl>
               <p className="mt-4 text-xs leading-5 text-muted">
-                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة
-                الأجهزة المباعة.
+                تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة{" "}
+                {units.noun} المباعة.
               </p>
             </Panel>
           </div>
@@ -639,13 +520,6 @@ export function ReportsPage() {
               rowKey={(r) => r.id}
               onRowClick={(r) => api.getSale(r.id).then(setOpenSale, (e) => toast(errorMessage(e), "error"))}
             />
-          )}
-        </TabTable>
-      )}
-      {tab === "products" && (
-        <TabTable empty="لم يُبع أي منتج في هذه الفترة">
-          {data.products.length > 0 && (
-            <DataTable columns={productColumns} rows={data.products} rowKey={(r) => r.product_id} />
           )}
         </TabTable>
       )}
@@ -717,40 +591,34 @@ export function ReportsPage() {
           </Panel>
         </div>
       )}
-      {tab === "stock" && (
-        <>
-          <p className="mb-3 text-sm text-muted">
-            المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.
-          </p>
-          <TabTable empty="لا توجد منتجات">
-            {data.stock.length > 0 && (
-              <DataTable columns={stockCols} rows={data.stock} rowKey={(r) => r.phone.id} />
-            )}
-          </TabTable>
-        </>
-      )}
-      {tab === "movements" && (
-        <>
-          <div className="mb-3 w-56">
-            <Select
-              value={reason}
-              onChange={(e) => setReason(e.target.value as MovementReason | "")}
-              aria-label="نوع الحركة"
-            >
-              <option value="">كل الحركات</option>
-              {(Object.keys(movementLabels) as MovementReason[]).map((r) => (
-                <option key={r} value={r}>
-                  {movementLabels[r]}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <TabTable empty="لا توجد حركات في هذه الفترة">
-            {movements.length > 0 && (
-              <DataTable columns={movementColumns} rows={movements} rowKey={(r) => r.id} />
-            )}
-          </TabTable>
-        </>
+      {shopTabs.map(
+        (t, i) =>
+          tab === t.value && (
+            <div key={t.value}>
+              {t.intro && <p className="mb-3 text-sm text-muted">{t.intro}</p>}
+              {t.filter && (
+                <div className="mb-3 w-56">
+                  <Select
+                    value={filters[t.value] ?? ""}
+                    onChange={(e) => setFilters((f) => ({ ...f, [t.value]: e.target.value }))}
+                    aria-label={t.filter.label}
+                  >
+                    <option value="">{t.filter.all}</option>
+                    {t.filter.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              <TabTable empty={t.empty}>
+                {shopRows[i].length > 0 && (
+                  <DataTable columns={t.columns(shopRows[i], s)} rows={shopRows[i]} rowKey={t.rowKey} />
+                )}
+              </TabTable>
+            </div>
+          ),
       )}
 
       {openSale && <ReceiptModal sale={openSale} onClose={() => setOpenSale(null)} />}
@@ -776,17 +644,17 @@ function Line({ label, value, strong }: { label: string; value: ReactNode; stron
 
 /**
  * Sales down to net profit as a running sum: each step subtracts from the line above it,
- * and the result lands on the phone screen at the bottom.
+ * and the result lands on the shop's readout at the bottom.
  */
 function ProfitStatement({ summary: s, currency }: { summary: ReportSummary; currency: string }) {
   const steps: { label: string; note?: string; value: number; kind: "plus" | "minus" | "result" }[] = [
     {
       label: "المبيعات",
-      note: `${s.sales_count} فاتورة · ${formatPhones(s.units_sold)}`,
+      note: `${s.sales_count} فاتورة · ${shop.units.count(s.units_sold)}`,
       value: s.revenue,
       kind: "plus",
     },
-    { label: "تكلفة الأجهزة المباعة", value: s.cost, kind: "minus" },
+    { label: `تكلفة ${shop.units.noun} المباعة`, value: s.cost, kind: "minus" },
     { label: "إجمالي الربح", note: `هامش ${margin(s.profit, s.revenue)}`, value: s.profit, kind: "result" },
     { label: "المصروفات", value: s.expenses, kind: "minus" },
   ];

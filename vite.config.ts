@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
-import { resolveShop } from "./shops";
+import { resolveShop } from "./shops.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 

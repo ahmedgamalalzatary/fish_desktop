@@ -1,8 +1,8 @@
 import { ArchiveRestore, ChevronLeft, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { DataTable, type Column } from "../components/DataTable";
-import { PhoneLines } from "../components/PhoneLines";
-import { AddPhonesModal, ModelPhonesModal } from "../components/PhoneModals";
+import { DataTable, type Column } from "../../components/DataTable";
+import { PhoneLines } from "./PhoneLines";
+import { AddPhonesModal, ModelPhonesModal } from "./PhoneModals";
 import {
   Badge,
   Button,
@@ -14,13 +14,14 @@ import {
   PageHeader,
   Panel,
   Toggle,
-} from "../components/ui";
-import { api } from "../lib/api";
-import { formatAmount, formatPhones } from "../lib/format";
-import { newDraft, useReadDrafts, type PhoneDraft } from "../lib/phones";
-import { errorMessage, useToast } from "../lib/toast";
-import { useResource } from "../lib/useResource";
-import type { Product } from "../lib/types";
+} from "../../components/ui";
+import { api } from "./api";
+import { formatAmount } from "../../lib/format";
+import { formatPhones } from "./format";
+import { newDraft, useReadDrafts, type PhoneDraft } from "./phones";
+import { errorMessage, useToast } from "../../lib/toast";
+import { useResource } from "../../lib/useResource";
+import type { Product } from "./types";
 
 /** "18,500.00" or "18,500.00 – 24,000.00" for the phones of a model in stock. */
 function priceRange(p: Product) {

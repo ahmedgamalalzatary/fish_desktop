@@ -1,17 +1,18 @@
 import { LogOut, PackagePlus, Pencil, Plus, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { DataTable, type Column } from "../components/DataTable";
-import { ExportButtons } from "../components/ExportButtons";
-import { ReportDocument } from "../components/ReportDocument";
-import { AddPhonesModal, EditPhoneModal, RemovePhoneModal } from "../components/PhoneModals";
-import { Button, Empty, Input, PageHeader, Panel, Select } from "../components/ui";
-import { api } from "../lib/api";
-import { section } from "../lib/document";
-import { formatMoney, formatPhones, isoDate } from "../lib/format";
-import { useSession } from "../lib/session";
-import { stockColumns, stockRows, type StockRow } from "../lib/stock";
-import { useResource } from "../lib/useResource";
-import { PurchaseFormModal } from "./PurchasesPage";
+import { DataTable, type Column } from "../../components/DataTable";
+import { ExportButtons } from "../../components/ExportButtons";
+import { ReportDocument } from "../../components/ReportDocument";
+import { AddPhonesModal, EditPhoneModal, RemovePhoneModal } from "./PhoneModals";
+import { Button, Empty, Input, PageHeader, Panel, Select } from "../../components/ui";
+import { api } from "./api";
+import { section } from "../../lib/document";
+import { formatMoney, isoDate } from "../../lib/format";
+import { formatPhones } from "./format";
+import { useSession } from "../../lib/session";
+import { stockColumns, stockRows, type StockRow } from "./stock";
+import { useResource } from "../../lib/useResource";
+import { PurchaseFormModal } from "../../pages/PurchasesPage";
 
 const matches = (r: StockRow, q: string) =>
   [r.product.name, r.phone.serial, r.phone.storage, r.phone.color].some((s) => s.toLowerCase().includes(q));

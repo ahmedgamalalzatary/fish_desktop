@@ -1,3 +1,4 @@
+import { shop } from "@shop";
 import type { Column } from "../components/DataTable";
 import { formatAmount, formatDateTime } from "./format";
 import type { PurchaseSummary, SupplierReportRow } from "./types";
@@ -12,7 +13,7 @@ export function purchaseColumns(rows: PurchaseSummary[]): Column<PurchaseSummary
     { header: "المورد", cell: (r) => r.supplier_name },
     { header: "فاتورة المورد", cell: (r) => r.invoice_no || "—" },
     {
-      header: "الأجهزة",
+      header: shop.units.invoiceLines,
       numeric: true,
       cell: (r) => r.items_count,
       total: sum(rows, (r) => r.items_count),
@@ -38,10 +39,10 @@ export function supplierReportColumns(rows: SupplierReportRow[]): Column<Supplie
     { header: "المورد", cell: (r) => r.name },
     { header: "الفواتير", numeric: true, cell: (r) => r.purchases_count },
     {
-      header: "الأجهزة المستلمة",
+      header: `${shop.units.noun} المستلمة`,
       numeric: true,
-      cell: (r) => r.pieces,
-      total: sum(rows, (r) => r.pieces),
+      cell: (r) => shop.units.format(r.pieces),
+      total: shop.units.format(sum(rows, (r) => r.pieces)),
     },
     {
       header: "المشتريات",

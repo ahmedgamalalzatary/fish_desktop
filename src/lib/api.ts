@@ -1,16 +1,12 @@
+import type { Cart } from "@shop/types";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CashierReportRow,
   DailyRow,
   Expense,
-  MovementReason,
-  MovementRow,
   PaymentInput,
-  PhoneInput,
   PeriodGroup,
   PeriodRow,
-  Product,
-  ProductReportRow,
   Purchase,
   PurchaseInput,
   PurchaseSummary,
@@ -29,7 +25,7 @@ import type {
 } from "./types";
 
 /** Backend errors arrive as plain Arabic strings; wrap them so callers can rely on `Error.message`. */
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
@@ -37,8 +33,9 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
   }
 }
 
-type Range = { from: string; to: string };
+export type Range = { from: string; to: string };
 
+/** The shared commands; each shop adds its own in src/shops/<shop>/api.ts. */
 export const api = {
   needsSetup: () => call<boolean>("needs_setup"),
   setupAdmin: (name: string, username: string, password: string) =>
@@ -53,16 +50,6 @@ export const api = {
   createUser: (input: UserInput) => call<number>("create_user", { input }),
   updateUser: (id: number, input: UserInput) => call<void>("update_user", { id, input }),
   deleteUser: (id: number) => call<"deleted" | "deactivated">("delete_user", { id }),
-
-  listProducts: (includeInactive = false) => call<Product[]>("list_products", { includeInactive }),
-  createProduct: (name: string) => call<number>("create_product", { name }),
-  updateProduct: (id: number, name: string) => call<void>("update_product", { id, name }),
-  deleteProduct: (id: number) => call<"deleted" | "archived">("delete_product", { id }),
-  restoreProduct: (id: number) => call<void>("restore_product", { id }),
-
-  addPhones: (productId: number, phones: PhoneInput[]) => call<void>("add_phones", { productId, phones }),
-  updatePhone: (id: number, input: PhoneInput) => call<void>("update_phone", { id, input }),
-  removePhone: (id: number, note: string) => call<void>("remove_phone", { id, note }),
 
   listSuppliers: () => call<Supplier[]>("list_suppliers"),
   createSupplier: (input: SupplierInput) => call<number>("create_supplier", { input }),
@@ -79,8 +66,7 @@ export const api = {
   getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
-  createSale: (phoneIds: number[], payments: PaymentInput[]) =>
-    call<Sale>("create_sale", { items: phoneIds, payments }),
+  createSale: (items: Cart, payments: PaymentInput[]) => call<Sale>("create_sale", { items, payments }),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),
@@ -96,10 +82,7 @@ export const api = {
 
   reportSummary: (r: Range) => call<ReportSummary>("report_summary", r),
   reportDaily: (r: Range) => call<DailyRow[]>("report_daily", r),
-  reportByProduct: (r: Range) => call<ProductReportRow[]>("report_by_product", r),
   reportByCashier: (r: Range) => call<CashierReportRow[]>("report_by_cashier", r),
-  reportMovements: (r: Range, reason: MovementReason | null = null) =>
-    call<MovementRow[]>("report_movements", { ...r, reason }),
   reportBySupplier: (r: Range) => call<SupplierReportRow[]>("report_by_supplier", r),
   reportPeriods: (r: Range, group: PeriodGroup) => call<PeriodRow[]>("report_periods", { ...r, group }),
   reportPurchasedItems: (r: Range) => call<PurchasedItemRow[]>("report_purchased_items", r),

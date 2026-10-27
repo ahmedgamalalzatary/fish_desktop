@@ -1,9 +1,9 @@
 import { Plus, X } from "lucide-react";
 import { useId, useState } from "react";
-import { cx } from "../lib/cx";
-import { colorOptions, newDraft, repeatedSerials, storageOptions, type PhoneDraft } from "../lib/phones";
-import type { Product } from "../lib/types";
-import { Button, Input, Select } from "./ui";
+import { cx } from "../../lib/cx";
+import { colorOptions, newDraft, repeatedSerials, storageOptions, type PhoneDraft } from "./phones";
+import type { Product } from "./types";
+import { Button, Input, Select } from "../../components/ui";
 
 /**
  * Rows of phones being added, one serial per row. With `products`, each row also picks its model

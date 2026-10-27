@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { listShops, resolveShop } from "../shops";
+import { listShops, resolveShop } from "../shops.ts";
 
 function shopsRoot() {
   const root = mkdtempSync(join(tmpdir(), "shops-"));
