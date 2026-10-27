@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useSession } from "../lib/session";
 import type { NavItem } from "../lib/shop";
+import { UpdateBanner } from "./Updates";
 
 export function Shell({ children }: { children: ReactNode }) {
   const { user, settings, logout } = useSession();
@@ -68,7 +69,10 @@ export function Shell({ children }: { children: ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        {user.role === "admin" && <UpdateBanner />}
+        {children}
+      </main>
     </div>
   );
 }

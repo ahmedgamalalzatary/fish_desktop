@@ -18,5 +18,12 @@
         "center": true
       }
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ahmedgamalalzatary/fish_desktop/releases/download/mobile-updates/latest.json"
+      ]
+    }
   }
 }

@@ -1,5 +1,10 @@
 # Pushing a tag `<shop>-v<version>` (e.g. fish-v0.3.0) checks and builds that shop and publishes its
 # installer as a GitHub release. The version in the tag must match src-tauri/shops/<shop>/tauri.conf.json.
+#
+# The build is signed for auto-update (secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD), and its latest.json is copied to the release `<shop>-updates`,
+# which installed copies of that shop check. One fixed release per shop, because GitHub's "latest
+# release" is shared by the whole repo.
 name: Release
 
 on:
@@ -32,6 +37,8 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: ${{ steps.tag.outputs.name }} ${{ steps.tag.outputs.version }}
@@ -39,4 +46,18 @@ jobs:
           releaseDraft: false
           args: >-
             --config src-tauri/shops/${{ steps.tag.outputs.shop }}/tauri.conf.json
+            --config src-tauri/release.conf.json
             --features ${{ steps.tag.outputs.shop }}
+      - name: Publish to the shop's update channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          CHANNEL: ${{ steps.tag.outputs.shop }}-updates
+          NAME: ${{ steps.tag.outputs.name }}
+        run: |
+          gh release download "$TAG" --pattern latest.json --dir updater
+          gh release view "$CHANNEL" > /dev/null 2>&1 ||
+            gh release create "$CHANNEL" --title "$NAME updates" --latest=false \
+              --notes "Update feed for installed copies of $NAME. Do not delete."
+          gh release upload "$CHANNEL" updater/latest.json --clobber

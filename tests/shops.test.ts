@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { listShops, parseReleaseTag, resolveShop, taskCommands } from "../shops.ts";
+import { listShops, parseReleaseTag, releaseProblems, resolveShop, taskCommands } from "../shops.ts";
 
 function shopsRoot() {
   const root = mkdtempSync(join(tmpdir(), "shops-"));
@@ -102,5 +102,32 @@ describe("parseReleaseTag", () => {
     expect(() => parseReleaseTag("v0.3.0")).toThrow(/release tag/);
     expect(() => parseReleaseTag("fish-0.3.0")).toThrow(/release tag/);
     expect(() => parseReleaseTag("fish-v0.3")).toThrow(/release tag/);
+  });
+});
+
+describe("releaseProblems", () => {
+  const endpoint = "https://github.com/o/r/releases/download/fish-updates/latest.json";
+  const config = (version: string, endpoints?: string[]) => ({
+    version,
+    plugins: endpoints ? { updater: { endpoints } } : undefined,
+  });
+
+  test("a shop config at the tag's version, updating from its own channel, is fine", () => {
+    expect(releaseProblems("fish", "0.3.0", config("0.3.0", [endpoint]))).toEqual([]);
+  });
+
+  test("a version that differs from the tag is a problem", () => {
+    expect(releaseProblems("fish", "0.3.0", config("0.2.0", [endpoint]))).toEqual([
+      "the tag is 0.3.0 but src-tauri/shops/fish/tauri.conf.json is 0.2.0",
+    ]);
+  });
+
+  test("a shop that would update from no channel, or another shop's, is a problem", () => {
+    const problem =
+      "src-tauri/shops/fish/tauri.conf.json must update from releases/download/fish-updates/latest.json";
+    expect(releaseProblems("fish", "0.3.0", config("0.3.0"))).toEqual([problem]);
+    expect(
+      releaseProblems("fish", "0.3.0", config("0.3.0", [endpoint.replace("fish-updates", "mobile-updates")])),
+    ).toEqual([problem]);
   });
 });

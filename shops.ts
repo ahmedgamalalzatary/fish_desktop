@@ -57,3 +57,20 @@ export function parseReleaseTag(tag: string): { shop: string; version: string } 
   if (!m) throw new Error(`"${tag}" is not a release tag. Use <shop>-v<version>, e.g. fish-v0.3.0`);
   return { shop: m[1], version: m[2] };
 }
+
+interface ShopConfig {
+  version?: string;
+  plugins?: { updater?: { endpoints?: string[] } };
+}
+
+/** Why a shop's config can't be released under a tag of `version`; empty when it can. */
+export function releaseProblems(shop: string, version: string, config: ShopConfig): string[] {
+  const file = `src-tauri/shops/${shop}/tauri.conf.json`;
+  const channel = `releases/download/${shop}-updates/latest.json`;
+  const problems: string[] = [];
+  if (config.version !== version) problems.push(`the tag is ${version} but ${file} is ${config.version}`);
+  if (!config.plugins?.updater?.endpoints?.some((url) => url.endsWith(`/${channel}`))) {
+    problems.push(`${file} must update from ${channel}`);
+  }
+  return problems;
+}

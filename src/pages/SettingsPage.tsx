@@ -1,12 +1,16 @@
 import { shop } from "@shop";
+import { getVersion } from "@tauri-apps/api/app";
 import { save } from "@tauri-apps/plugin-dialog";
-import { DatabaseBackup } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { DatabaseBackup, RefreshCw } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Receipt } from "../components/Receipt";
+import { InstallButton } from "../components/Updates";
 import { Button, Field, Input, PageHeader, Panel } from "../components/ui";
 import { api } from "../lib/api";
 import { isoDate } from "../lib/format";
 import { useSession } from "../lib/session";
+import { updateStatus } from "../lib/updateState";
+import { useUpdater } from "../lib/updater";
 import { errorMessage, useToast } from "../lib/toast";
 import type { Settings } from "../lib/types";
 
@@ -120,6 +124,7 @@ export function SettingsPage() {
 
       <ChangePassword />
       <Backup />
+      <Updates />
     </div>
   );
 }
@@ -217,6 +222,39 @@ function Backup() {
         <DatabaseBackup className="size-4" />
         حفظ نسخة احتياطية
       </Button>
+    </Section>
+  );
+}
+
+function Updates() {
+  const { state, find, install } = useUpdater();
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    getVersion().then(setVersion, () => {});
+  }, []);
+
+  return (
+    <Section
+      title="التحديثات"
+      description="يبحث البرنامج عن إصدار جديد عند فتحه، ويحتاج ذلك اتصالاً بالإنترنت. بياناتك تبقى كما هي بعد التحديث."
+    >
+      <div className="flex flex-col items-start gap-3">
+        {version && <p className="text-sm text-muted">الإصدار الحالي {version}</p>}
+        <div className="flex items-center gap-3">
+          <Button tone="outline" onClick={find} disabled={state.step === "checking"}>
+            <RefreshCw className="size-4" />
+            البحث عن تحديث
+          </Button>
+          {(state.step === "available" || state.step === "downloading") && (
+            <InstallButton state={state} install={install} />
+          )}
+        </div>
+        {state.step !== "idle" && (
+          <p role="status" className={state.step === "failed" ? "text-sm text-danger" : "text-sm"}>
+            {updateStatus(state)}
+          </p>
+        )}
+      </div>
     </Section>
   );
 }

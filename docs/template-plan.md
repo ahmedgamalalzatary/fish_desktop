@@ -374,20 +374,28 @@ the profit report.
 
 ### Slice 7a — Backend and signing
 
-- Add `tauri-plugin-updater` and `tauri-plugin-process`; permissions in `capabilities/default.json`.
-- Generate the signing key once (`tauri signer generate`); public key in base config, private key +
-  password as GitHub secrets. `bundle.createUpdaterArtifacts: true`.
+- `tauri-plugin-updater` and `tauri-plugin-process` in `lib.rs`; `updater:default` and
+  `process:allow-restart` in `capabilities/default.json`.
+- The signing key was generated once (`tauri signer generate`) and lives outside the repo in
+  `%USERPROFILE%\.tauri\pos-updater.key` (+ `.password.txt`). Its public key is in the base config with
+  `installMode: passive`. Back the private key up: without it no installed shop can ever be updated again.
+- `src-tauri/release.conf.json` turns on `createUpdaterArtifacts`; only release builds pass it, so a
+  plain `npm run build <shop>` still works without the key.
 
 ### Slice 7b — Update channel per shop
 
-- Each shop config sets its own `plugins.updater.endpoints`. GitHub's "latest release" is shared by the
-  whole repo, so it cannot serve two shops: CI uploads `latest.json` to a fixed per-shop release
-  (`fish-updates`, `mobile-updates`) on each tagged build.
+- Each shop config sets `plugins.updater.endpoints` to
+  `…/releases/download/<shop>-updates/latest.json`; `releaseProblems()` refuses a release tag when it
+  doesn't, or when the version differs.
+- `release.yml` signs the build (secrets `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`)
+  and copies the new `latest.json` to the fixed release `<shop>-updates` (created on first use).
 
 ### Slice 7c — UI
 
-- Shared `UpdateBanner` (check on start, "تحديث متاح", install + restart) in `Shell.tsx`, plus a manual
-  "check for updates" in Settings. Admin only.
+- `UpdateBanner` (`src/components/Updates.tsx`) in `Shell.tsx`, admins only: checks once on start, stays
+  quiet when offline, offers "تحديث وإعادة التشغيل" with download progress.
+- Settings → "التحديثات": current version, a manual check and install.
+- The steps live in `src/lib/updateState.ts` (tested); `src/lib/updater.ts` drives the plugin.
 
 **Done when:** an installed fish 0.3.0 updates itself to 0.3.1, and mobile likewise, from one code change.
 
