@@ -57,7 +57,6 @@ Every task takes a shop name, or runs for every shop without one:
 | `npm test [<shop>]`          | Vitest + `cargo test`                                     |
 | `npm run check [<shop>]`     | typecheck + lint + test                                   |
 | `npm run test:watch <shop>`  | Vitest in watch mode                                      |
-| `npm run format`             | Prettier (width 110) + rustfmt; `format:check` only looks |
 | `npm run shops`              | The shops there are                                       |
 
 The installer is written to `src-tauri/target/release/bundle/nsis/`.

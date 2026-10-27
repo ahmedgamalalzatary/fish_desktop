@@ -959,7 +959,7 @@ Shops add their own columns/tables on top.
 ### 12.1 npm
 
 Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `check`, `shops`,
-`activation-code`, `format`, `format:check`, `tauri` (see the table below).
+`activation-code`, `tauri` (see the table below).
 
 | Script | Behavior |
 | --- | --- |
@@ -971,7 +971,6 @@ Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `chec
 | `test [<shop>]` | Per shop: `vitest run --mode <shop>`, then `cargo test … --features <shop>` |
 | `check [<shop>]` | typecheck, then lint, then test |
 | `test:watch <shop>` | `vitest --mode <shop>` in watch mode |
-| `format` / `format:check` | Prettier width 110 + `cargo fmt` |
 | `shops` | `node scripts/shops.ts list` |
 | `activation-code <device code>` | `node scripts/activation-code.ts`: prints the PC's activation code |
 
