@@ -69,8 +69,8 @@ git push origin fish-v0.3.0
 ```
 
 GitHub Actions checks that shop, builds a signed installer, publishes it as a release, and points the
-shop's update channel (the `fish-updates` release) at it; installed copies then offer the update. CI also
-checks every shop on each push and pull request.
+shop's update channel (the `fish-updates` release) at it; installed copies then offer the update. Nothing
+runs on GitHub except for a release tag you push; check changes locally with `npm run check`.
 
 The update signing key is `%USERPROFILE%\.tauri\pos-updater.key` (password next to it); the repository
 holds it as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep a

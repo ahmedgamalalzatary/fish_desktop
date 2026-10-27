@@ -81,7 +81,7 @@ npm run dev <new>       # run it; go through docs/smoke-test.md
 npm run check           # every shop, before committing a change to shared code
 ```
 
-CI picks the shop up by itself: the matrix is every folder in `src/shops/`.
+The release workflow picks the shop up by itself from its tag.
 
 ## 6. Release it
 

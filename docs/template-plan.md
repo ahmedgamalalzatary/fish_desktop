@@ -344,7 +344,7 @@ the profit report.
 
 ## Phase 6 — Tooling and CI · size: M · risk: low
 
-**Goal:** every change is checked against every shop automatically, and releases build themselves.
+**Goal:** one command checks every shop, and a release builds itself when asked for.
 
 ### Slice 6a — Local checks
 
@@ -358,13 +358,13 @@ the profit report.
 
 ### Slice 6b — GitHub Actions
 
-- `.github/workflows/ci.yml`, on every push and PR: `npm run shops` builds the matrix, formatting is
-  checked once, then `npm run check <shop>` runs per shop on `windows-latest`.
+- No checks run on push: the owner chose GitHub to build only the releases they ask for (2026-10-27).
+  Changes are checked locally with `npm run check`.
 - `.github/workflows/release.yml`, on a tag `<shop>-v<version>`: `node scripts/shops.ts release <tag>`
   refuses a tag whose version differs from the shop's config, then checks the shop and builds it with
   `tauri-apps/tauri-action`, attaching the NSIS installer to a GitHub release for that tag.
 
-**Done when:** a PR shows a green check per shop; pushing a tag produces an installer.
+**Done when:** `npm run check` covers every shop; pushing a tag produces an installer.
 
 ---
 
@@ -407,7 +407,7 @@ the profit report.
 
 - [`docs/new-shop.md`](new-shop.md): copy the closest shop's four folders and tsconfig, wire the Cargo
   feature and one `cfg` block in `lib.rs`, set the shop's identity (name, identifier, DB file, update
-  channel, icons), then make it the new shop and check it. CI and the release workflow find it by itself.
+  channel, icons), then make it the new shop and check it. The scripts and the release workflow find it by itself.
 - `build.rs` lists the shops and stops a build with no shop feature or more than one, so a new shop
   doesn't touch any other shop's lines.
 - `README.md` describes the template, the scripts, releasing and where each shop keeps its data.
