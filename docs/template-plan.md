@@ -405,12 +405,16 @@ the profit report.
 
 **Goal:** adding shop #3 is a checklist, not a project.
 
-- `docs/new-shop.md`: copy the closest `src/shops/<x>` + `src-tauri/src/shops/<x>` +
-  `src-tauri/shops/<x>`, rename, new identifier and DB file, start migrations from
-  `core` base tables + own tables, add scripts, add to CI matrix, theme values, icons.
-- Update `README.md` for the template, and the project memory notes.
+- [`docs/new-shop.md`](new-shop.md): copy the closest shop's four folders and tsconfig, wire the Cargo
+  feature and one `cfg` block in `lib.rs`, set the shop's identity (name, identifier, DB file, update
+  channel, icons), then make it the new shop and check it. CI and the release workflow find it by itself.
+- `build.rs` lists the shops and stops a build with no shop feature or more than one, so a new shop
+  doesn't touch any other shop's lines.
+- `README.md` describes the template, the scripts, releasing and where each shop keeps its data.
 
 **Done when:** someone following only the doc can create a dummy shop that builds and passes `check`.
+Done on 2026-10-27 with a throwaway `demo` shop copied from `mobile`: `npm run check demo` and
+`vite build --mode demo` passed (after making the fixture test helpers optional), then it was removed.
 
 ---
 

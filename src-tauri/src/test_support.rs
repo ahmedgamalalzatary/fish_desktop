@@ -21,6 +21,8 @@ pub fn temp_db(name: &str) -> (Connection, PathBuf) {
 }
 
 /// Opens a copy of a fixture from `tests/fixtures/`, so the committed file is never migrated in place.
+// For a shop's upgrade tests; a new shop has no old release to test yet.
+#[allow(dead_code)]
 pub fn open_fixture(name: &str) -> (Connection, PathBuf) {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../tests/fixtures")
@@ -31,6 +33,7 @@ pub fn open_fixture(name: &str) -> (Connection, PathBuf) {
 }
 
 /// The single number a query returns.
+#[allow(dead_code)]
 pub fn int(db: &Connection, sql: &str) -> i64 {
     db.query_row(sql, [], |r| r.get(0)).unwrap()
 }

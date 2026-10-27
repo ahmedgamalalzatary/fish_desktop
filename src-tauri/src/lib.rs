@@ -53,6 +53,7 @@ macro_rules! invoke_handler {
 }
 
 // The shop this build is for, picked by a Cargo feature (`--features fish`, `--features mobile`).
+// build.rs stops a build with no shop feature or more than one.
 #[cfg(feature = "fish")]
 #[path = "shops/fish/mod.rs"]
 #[macro_use]
@@ -61,10 +62,6 @@ mod shop;
 #[path = "shops/mobile/mod.rs"]
 #[macro_use]
 mod shop;
-#[cfg(not(any(feature = "fish", feature = "mobile")))]
-compile_error!("Pick the shop to build with a feature, e.g. `--features mobile`.");
-#[cfg(all(feature = "fish", feature = "mobile"))]
-compile_error!("Build one shop at a time: pass a single shop feature.");
 
 use commands::*;
 use tauri::Manager;

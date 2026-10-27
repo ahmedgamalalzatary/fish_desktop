@@ -1,78 +1,102 @@
-# Mobile POS — نقطة بيع الموبايلات
+# POS — نقطة البيع
 
-A point-of-sale desktop app for a single mobile phone shop (one device, no branches), built with
-**Tauri 2 + React + Tailwind + SQLite**. The interface is Arabic (RTL).
+One codebase for the point-of-sale desktop apps of several shops (one device each, no branches), built
+with **Tauri 2 + React + Tailwind + SQLite**. The interface is Arabic (RTL). Each shop is built as its
+own app, with its own name, look, database and updates.
 
-## Features
+| Shop     | App                              | What it sells                                                    |
+| -------- | -------------------------------- | ---------------------------------------------------------------- |
+| `fish`   | Fish POS — نقطة بيع الأسماك      | fish by weight (per kg or fixed packs), with categories          |
+| `mobile` | Mobile POS — نقطة بيع الموبايلات | phones, one row per device by serial (IMEI / S/N), no categories |
 
-- **Roles**
-  - **Admin (مدير):** manages models, phones, stock, employees, settings and reports, and can also sell.
-  - **Cashier (كاشير):** sales screen only, plus reprinting their own receipts from today.
-  - Roles are enforced in the Rust backend on every command, not only in the UI.
-- **Models and phones:** a product is a model named in full, brand included
-  (e.g. «Samsung Galaxy S24 Ultra»); there are no categories. Every physical phone is its own
-  row with a serial number (IMEI / S/N), storage, colour, battery health and its own sell and
-  buy price. Stock is the number of phones not yet sold: one serial is one phone.
-- **Adding phones:** from the products or stock page, or on a supplier purchase invoice. Pressing
-  Enter after a serial starts the next row with the same details, so a scanner can read a box quickly.
-  A phone that leaves without a sale (returned, damaged, added by mistake) is taken out with a reason.
-- **Purchases & suppliers:** a purchase invoice has a supplier and one line per phone (model, serial,
-  buy price), and adds them to stock. Pay in full, in part, or on credit;
-  the unpaid part goes to the supplier's balance. Record later payments, view and print a supplier
-  statement, and delete an invoice entered by mistake, as long as none of its phones has been sold.
-- **Sales:** scan a serial (or pick the model, then the phone) to add it. Pay with cash
-  (with change calculation), card or e-wallet, or a mix of them in one sale
-  (e.g. 20,000 cash and 15,000 by card). Only cash can be over the total. 80 mm thermal receipt.
-- **Expenses:** anyone signed in records an amount and a reason; it is booked under their name.
-  Cashiers see and can take back only their own expenses of the day.
-- **Reports:** summary with a daily chart, a profit statement (sales − cost of phones sold −
-  expenses = net profit) with a daily / monthly / yearly breakdown of what was bought, sold,
-  spent and earned, receipts, models, employees, purchases
-  (per invoice or per model), suppliers (purchases, payments and what is owed), expenses
-  (per employee), current stock, and stock movements, for any date range.
-- **Print & PDF:** every report, the sales lists, and each receipt can be printed or saved as PDF.
-  PDFs are rendered by WebView2 itself, so Arabic text is shaped correctly.
+## What every shop has
+
+- **Roles:** the admin (مدير) manages everything and can also sell; the cashier (كاشير) sees the sales
+  screen and expenses, and reprints their own receipts from today. Roles are enforced in the Rust
+  backend on every command, not only in the UI.
+- **Sales:** pay with cash (with change), card or e-wallet, or a mix of them in one sale. Only cash can
+  be over the total. 80 mm thermal receipt.
+- **Purchases & suppliers:** a purchase invoice adds stock; pay in full, in part or on credit, and the
+  unpaid part goes to the supplier's balance. Later payments, supplier statements, and deleting an
+  invoice entered by mistake.
+- **Expenses:** anyone signed in records an amount and a reason, booked under their name.
+- **Reports:** summary with a daily chart, a profit statement (sales − cost − expenses) by day, month or
+  year, receipts, employees, purchases, suppliers, expenses, current stock and stock movements, plus
+  the shop's own (products, categories…), for any date range.
+- **Print & PDF:** every report, sales list and receipt prints or saves as PDF (rendered by WebView2, so
+  Arabic is shaped correctly).
 - **Backup:** a one-click database copy from Settings.
+- **Auto-update:** the app checks for a new version when it opens and an admin installs it with one
+  click; the data stays as it is.
 
-On first launch, the app asks you to create the admin account.
+What only one shop has (products by weight and categories in fish, phones by serial in mobile) lives in
+that shop's folder. On first launch, the app asks you to create the admin account.
 
 ## Development
 
-Requirements: Node 20+, Rust (stable, MSVC), and the Visual Studio C++ Build Tools. WebView2 ships with Windows 11.
+Requirements: Node 24+, Rust (stable, MSVC), and the Visual Studio C++ Build Tools. WebView2 ships with
+Windows 11.
 
 ```sh
 npm install
-npm run dev          # run the desktop app with hot reload
+npm run dev fish          # run a shop's desktop app with hot reload
 ```
 
-| Script                 | What it does                                          |
-| ---------------------- | ----------------------------------------------------- |
-| `npm run dev`          | Desktop app in development mode                       |
-| `npm run dev:web`      | Frontend only, in a browser (backend calls will fail) |
-| `npm run build`        | Release build + Windows installer (NSIS)              |
-| `npm run typecheck`    | TypeScript check                                      |
-| `npm run lint`         | ESLint + `cargo clippy -D warnings`                   |
-| `npm run format`       | Prettier + rustfmt                                    |
-| `npm run format:check` | Check formatting without writing                      |
-| `npm test`             | Vitest + `cargo test`                                 |
-| `npm run check`        | typecheck + lint + test                               |
+Every task takes a shop name, or runs for every shop without one:
+
+| Script                       | What it does                                              |
+| ---------------------------- | --------------------------------------------------------- |
+| `npm run dev <shop>`         | Desktop app in development mode                           |
+| `npm run web <shop>`         | Frontend only, in a browser (backend calls will fail)     |
+| `npm run build <shop>`       | Release build + Windows installer (NSIS)                  |
+| `npm run typecheck [<shop>]` | TypeScript check                                          |
+| `npm run lint [<shop>]`      | ESLint + `cargo clippy -D warnings`                       |
+| `npm test [<shop>]`          | Vitest + `cargo test`                                     |
+| `npm run check [<shop>]`     | typecheck + lint + test                                   |
+| `npm run test:watch <shop>`  | Vitest in watch mode                                      |
+| `npm run format`             | Prettier (width 110) + rustfmt; `format:check` only looks |
+| `npm run shops`              | The shops there are                                       |
 
 The installer is written to `src-tauri/target/release/bundle/nsis/`.
 
+## Releasing
+
+Set `version` in `src-tauri/shops/<shop>/tauri.conf.json`, commit and push, then push a tag:
+
+```sh
+git tag fish-v0.3.0
+git push origin fish-v0.3.0
+```
+
+GitHub Actions checks that shop, builds a signed installer, publishes it as a release, and points the
+shop's update channel (the `fish-updates` release) at it; installed copies then offer the update. CI also
+checks every shop on each push and pull request.
+
+The update signing key is `%USERPROFILE%\.tauri\pos-updater.key` (password next to it); the repository
+holds it as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep a
+backup of it: without it, no installed shop can be updated again.
+
 ## Where data lives
 
-The database is `%APPDATA%\com.mobileshop.pos\phones.db`. Money is stored as integer
-cents, so totals never drift from rounding.
+| Shop     | Database                                 |
+| -------- | ---------------------------------------- |
+| `fish`   | `%APPDATA%\com.fishshop.pos\fish-pos.db` |
+| `mobile` | `%APPDATA%\com.mobileshop.pos\phones.db` |
+
+Money is stored as integer cents, so totals never drift from rounding. Each shop's database upgrades
+itself in place; `tests/fixtures/` holds databases made by older releases to prove it.
 
 ## Project layout
 
 ```
-src/                 React frontend
-  pages/             one file per screen
-  components/        shared UI (Tailwind), receipt, report document, tables
-  lib/               api bindings, formatting, printing/PDF, session
-src-tauri/src/
-  db.rs              schema migrations
-  commands/          backend commands: auth, users, products, phones, suppliers,
-                     purchases, sales, expenses, reports, settings, pdf
+src/                       shared frontend: pages, components (Tailwind), lib (api, formatting, printing)
+  shops/<shop>/            the shop's own screens, types, theme and its entry in index.ts
+src-tauri/
+  src/commands/            shared backend commands
+  src/shops/<shop>/        the shop's migrations, sales/purchase lines, own commands and reports
+  shops/<shop>/            the shop's app config: name, identifier, version, window, update channel
+tests/                     shared tests; tests/<shop>/ the shop's own; tests/fixtures/ old databases
+docs/                      template-plan.md (how the template works), new-shop.md, smoke-test.md
 ```
+
+To add a shop, follow [docs/new-shop.md](docs/new-shop.md).
