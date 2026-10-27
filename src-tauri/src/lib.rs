@@ -1,6 +1,8 @@
 mod commands;
 mod db;
 mod error;
+#[cfg(test)]
+mod fixture_tests;
 mod state;
 
 use commands::*;
