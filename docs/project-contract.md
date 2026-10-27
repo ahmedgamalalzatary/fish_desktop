@@ -1077,15 +1077,17 @@ have data.
 ## 14. Release and update pipeline
 
 - Only manual releases. No checks on push. Local validation is `npm run check`.
-- `.github/workflows/release.yml` is `workflow_dispatch` with a required `shop` input; Windows runner;
+- `.github/workflows/release.yml` is `workflow_dispatch` with required `shop` and `version` inputs
+  (`gh workflow run release.yml -f shop=fish -f version=0.3.1`); the run is titled
+  "Release <shop> <version>"; Windows runner;
   Node 24; `contents: write`; full history for tags.
-- Steps: checkout → Node → `node scripts/shops.ts release "$SHOP"` (writes `build`, `shop`, `version`,
+- Steps: checkout → Node → `node scripts/shops.ts release "$SHOP" "$VERSION"` (writes `build`, `shop`, `version`,
   `tag`, `name` to `GITHUB_OUTPUT`) → when building: Rust + clippy, rust-cache keyed by shop, `npm ci`,
   `npm run check <shop>`, `tauri-apps/tauri-action` with shop config + release config + feature and
   signing secrets → download `latest.json` from the new release, create `<shop>-updates` if absent
   (`--latest=false`, "do not delete"), upload `latest.json` with `--clobber`.
 - `release()` logic: resolve shop; read its config; list tags `<shop>-v*`; compare `HEAD` with the
-  latest; if no relevant change, `build=false`; else reject an endpoint that does not end with
+  latest; if no relevant change, `build=false`; else reject a typed version that differs from the config, an endpoint that does not end with
   `/releases/download/<shop>-updates/latest.json` and reject an existing `<shop>-v<version>`. Release
   name = `<productName> <version>`; tag = `<shop>-v<version>`.
 - `relevantChanges` excludes paths starting `docs/`, `tests/`, `.github/`, any `.md`, and other shops'

@@ -1,6 +1,6 @@
 // Runs a task for every shop, or for one: `npm run check`, `npm run check fish`, `npm run dev mobile`.
 //   node scripts/shops.ts list              the shops, as JSON
-//   node scripts/shops.ts release <shop>    whether to release the shop now (see release.yml)
+//   node scripts/shops.ts release <shop> [<version>]   whether to release the shop now (see release.yml)
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ import {
 } from "../shops.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-const [task, arg] = process.argv.slice(2);
+const [task, arg, version] = process.argv.slice(2);
 
 function fail(message: string): never {
   console.error(message);
@@ -39,7 +39,7 @@ function output(values: Record<string, string>, summary: string) {
 }
 
 /** Releases the shop only when its app changed since its last release, at a version not yet released. */
-function release(shop: string) {
+function release(shop: string, asked?: string) {
   resolveShop(shop);
   const config = JSON.parse(readFileSync(join(ROOT, "src-tauri", "shops", shop, "tauri.conf.json"), "utf8"));
   const tags = git("tag", "--list", `${shop}-v*`);
@@ -53,7 +53,7 @@ function release(shop: string) {
       );
     }
   }
-  const problems = releaseProblems(shop, config, tags);
+  const problems = releaseProblems(shop, config, tags, asked);
   if (problems.length) fail(`Can't release ${shop}:\n- ${problems.join("\n- ")}`);
   output(
     {
@@ -71,7 +71,7 @@ try {
   if (task === "list") {
     console.log(JSON.stringify(listShops()));
   } else if (task === "release") {
-    release(arg ?? "");
+    release(arg ?? "", version);
   } else {
     const shops = arg ? [arg] : listShops();
     if (arg) resolveShop(arg);

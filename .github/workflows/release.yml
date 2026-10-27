@@ -1,5 +1,6 @@
 # Releases one shop, only when asked: Actions → Release → Run workflow, or
-#   gh workflow run release.yml -f shop=fish
+#   gh workflow run release.yml -f shop=fish -f version=0.3.1
+# The version must be the one in src-tauri/shops/<shop>/tauri.conf.json; it names the run.
 #
 # Nothing is built when nothing in that shop's app changed since its last release (other shops' folders,
 # docs, tests and workflows don't count). Otherwise the version in src-tauri/shops/<shop>/tauri.conf.json
@@ -8,13 +9,17 @@
 # which installed copies of that shop check. Signing uses the secrets TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
-run-name: Release ${{ inputs.shop }}
+run-name: Release ${{ inputs.shop }} ${{ inputs.version }}
 
 on:
   workflow_dispatch:
     inputs:
       shop:
         description: Shop to release (a folder in src/shops, e.g. fish)
+        required: true
+        type: string
+      version:
+        description: Its version, as in src-tauri/shops/<shop>/tauri.conf.json (e.g. 0.3.1)
         required: true
         type: string
 
@@ -36,7 +41,8 @@ jobs:
         shell: bash
         env:
           SHOP: ${{ inputs.shop }}
-        run: node scripts/shops.ts release "$SHOP"
+          VERSION: ${{ inputs.version }}
+        run: node scripts/shops.ts release "$SHOP" "$VERSION"
       - if: steps.plan.outputs.build == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:

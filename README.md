@@ -68,7 +68,7 @@ Nothing runs on GitHub by itself; check changes locally with `npm run check`. To
 shop: on GitHub, Actions → Release → Run workflow, or
 
 ```sh
-gh workflow run release.yml -f shop=fish
+gh workflow run release.yml -f shop=fish -f version=0.3.1
 ```
 
 If nothing in that shop's app changed since its last release, nothing is built (other shops' folders,

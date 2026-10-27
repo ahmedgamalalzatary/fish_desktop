@@ -117,6 +117,13 @@ describe("releaseProblems", () => {
     expect(releaseProblems("fish", config([endpoint.replace("fish-", "mobile-")]), [])).toEqual([problem]);
   });
 
+  test("a version asked for must be the shop's version, so the run's title is right", () => {
+    expect(releaseProblems("fish", config([endpoint]), [], "0.3.0")).toEqual([]);
+    expect(releaseProblems("fish", config([endpoint]), [], "0.3.1")).toEqual([
+      "the release is for 0.3.1 but src-tauri/shops/fish/tauri.conf.json is 0.3.0",
+    ]);
+  });
+
   test("a version that was already released is a problem", () => {
     expect(releaseProblems("fish", config([endpoint]), ["fish-v0.2.0", "fish-v0.3.0"])).toEqual([
       "fish 0.3.0 is already released; raise version in src-tauri/shops/fish/tauri.conf.json",

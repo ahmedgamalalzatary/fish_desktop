@@ -56,11 +56,17 @@ interface ShopConfig {
   plugins?: { updater?: { endpoints?: string[] } };
 }
 
-/** Why a shop's config can't be released now, given the repo's tags; empty when it can. */
-export function releaseProblems(shop: string, config: ShopConfig, tags: string[]): string[] {
+/**
+ * Why a shop's config can't be released now, given the repo's tags and the version the release was
+ * started for (`asked`, shown in the run's title); empty when it can.
+ */
+export function releaseProblems(shop: string, config: ShopConfig, tags: string[], asked?: string): string[] {
   const file = `src-tauri/shops/${shop}/tauri.conf.json`;
   const channel = `releases/download/${shop}-updates/latest.json`;
   const problems: string[] = [];
+  if (asked !== undefined && asked !== config.version) {
+    problems.push(`the release is for ${asked} but ${file} is ${config.version}`);
+  }
   if (!config.plugins?.updater?.endpoints?.some((url) => url.endsWith(`/${channel}`))) {
     problems.push(`${file} must update from ${channel}`);
   }
