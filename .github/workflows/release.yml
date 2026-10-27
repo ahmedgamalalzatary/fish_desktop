@@ -8,6 +8,7 @@
 # which installed copies of that shop check. Signing uses the secrets TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
+run-name: Release ${{ inputs.shop }}
 
 on:
   workflow_dispatch:
