@@ -1,6 +1,6 @@
 //! The mobile phone shop: one row per phone, tracked by its serial.
 //!
-//! Shared code uses only what this module exposes; see the shop contract in `docs/template-plan.md`.
+//! Shared code uses only what this module exposes; see the shop contract in `docs/project-contract.md`.
 
 #[cfg(test)]
 mod fixture_tests;

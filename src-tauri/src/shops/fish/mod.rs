@@ -1,6 +1,6 @@
 //! The fish shop: sold by weight or in fixed-weight packs, stock counted in grams.
 //!
-//! Shared code uses only what this module exposes; see the shop contract in `docs/template-plan.md`.
+//! Shared code uses only what this module exposes; see the shop contract in `docs/project-contract.md`.
 
 pub mod categories;
 #[cfg(test)]

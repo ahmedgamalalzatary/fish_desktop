@@ -98,7 +98,8 @@ src-tauri/
   src/shops/<shop>/        the shop's migrations, sales/purchase lines, own commands and reports
   shops/<shop>/            the shop's app config: name, identifier, version, window, update channel
 tests/                     shared tests; tests/<shop>/ the shop's own; tests/fixtures/ old databases
-docs/                      template-plan.md (how the template works), new-shop.md, smoke-test.md
+docs/project-contract.md   the full project contract: behaviour, architecture, schema, release, smoke test
 ```
 
-To add a shop, follow [docs/new-shop.md](docs/new-shop.md).
+To add a shop, follow [docs/project-contract.md](docs/project-contract.md#12-build-configuration-and-tooling)
+(section 12.4).

@@ -161,7 +161,7 @@ describe("relevantChanges", () => {
   test("docs, tests and workflows do not count, since they are not in the app", () => {
     expect(
       relevantChanges("fish", shops, [
-        "docs/new-shop.md",
+        "docs/project-contract.md",
         "README.md",
         "tests/fish/format.test.ts",
         ".github/workflows/release.yml",
