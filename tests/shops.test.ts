@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { listShops, parseReleaseTag, releaseProblems, resolveShop, taskCommands } from "../shops.ts";
+import {
+  latestRelease,
+  listShops,
+  relevantChanges,
+  releaseProblems,
+  resolveShop,
+  taskCommands,
+} from "../shops.ts";
 
 function shopsRoot() {
   const root = mkdtempSync(join(tmpdir(), "shops-"));
@@ -92,42 +99,73 @@ describe("taskCommands", () => {
   });
 });
 
-describe("parseReleaseTag", () => {
-  test("a release tag is the shop, a v and its version", () => {
-    expect(parseReleaseTag("fish-v0.3.0")).toEqual({ shop: "fish", version: "0.3.0" });
-    expect(parseReleaseTag("refs/tags/mobile-v0.5.12")).toEqual({ shop: "mobile", version: "0.5.12" });
-  });
-
-  test("anything else is refused", () => {
-    expect(() => parseReleaseTag("v0.3.0")).toThrow(/release tag/);
-    expect(() => parseReleaseTag("fish-0.3.0")).toThrow(/release tag/);
-    expect(() => parseReleaseTag("fish-v0.3")).toThrow(/release tag/);
-  });
-});
-
 describe("releaseProblems", () => {
   const endpoint = "https://github.com/o/r/releases/download/fish-updates/latest.json";
-  const config = (version: string, endpoints?: string[]) => ({
-    version,
+  const config = (endpoints?: string[]) => ({
+    version: "0.3.0",
     plugins: endpoints ? { updater: { endpoints } } : undefined,
   });
+  const problem =
+    "src-tauri/shops/fish/tauri.conf.json must update from releases/download/fish-updates/latest.json";
 
-  test("a shop config at the tag's version, updating from its own channel, is fine", () => {
-    expect(releaseProblems("fish", "0.3.0", config("0.3.0", [endpoint]))).toEqual([]);
-  });
-
-  test("a version that differs from the tag is a problem", () => {
-    expect(releaseProblems("fish", "0.3.0", config("0.2.0", [endpoint]))).toEqual([
-      "the tag is 0.3.0 but src-tauri/shops/fish/tauri.conf.json is 0.2.0",
-    ]);
+  test("a shop updating from its own channel is fine", () => {
+    expect(releaseProblems("fish", config([endpoint]), [])).toEqual([]);
   });
 
   test("a shop that would update from no channel, or another shop's, is a problem", () => {
-    const problem =
-      "src-tauri/shops/fish/tauri.conf.json must update from releases/download/fish-updates/latest.json";
-    expect(releaseProblems("fish", "0.3.0", config("0.3.0"))).toEqual([problem]);
+    expect(releaseProblems("fish", config(), [])).toEqual([problem]);
+    expect(releaseProblems("fish", config([endpoint.replace("fish-", "mobile-")]), [])).toEqual([problem]);
+  });
+
+  test("a version that was already released is a problem", () => {
+    expect(releaseProblems("fish", config([endpoint]), ["fish-v0.2.0", "fish-v0.3.0"])).toEqual([
+      "fish 0.3.0 is already released; raise version in src-tauri/shops/fish/tauri.conf.json",
+    ]);
+  });
+});
+
+describe("latestRelease", () => {
+  test("is the shop's highest version, compared as numbers", () => {
+    expect(latestRelease("fish", ["fish-v0.9.0", "mobile-v2.0.0", "fish-v0.10.0", "fish-v0.2.0"])).toBe(
+      "fish-v0.10.0",
+    );
+  });
+
+  test("is null before the shop's first release", () => {
+    expect(latestRelease("bakery", ["fish-v0.3.0"])).toBeNull();
+  });
+});
+
+describe("relevantChanges", () => {
+  const shops = ["fish", "mobile"];
+
+  test("shared code and the shop's own code count", () => {
+    const files = ["src/lib/format.ts", "src-tauri/src/commands/sales.rs", "src/shops/fish/PosPage.tsx"];
+    expect(relevantChanges("fish", shops, files)).toEqual(files);
     expect(
-      releaseProblems("fish", "0.3.0", config("0.3.0", [endpoint.replace("fish-updates", "mobile-updates")])),
-    ).toEqual([problem]);
+      relevantChanges("fish", shops, ["src-tauri/shops/fish/tauri.conf.json", "package.json"]),
+    ).toHaveLength(2);
+  });
+
+  test("another shop's code does not count", () => {
+    const files = [
+      "src/shops/mobile/PosPage.tsx",
+      "src-tauri/src/shops/mobile/sales.rs",
+      "src-tauri/shops/mobile/tauri.conf.json",
+      "tsconfig.mobile.json",
+    ];
+    expect(relevantChanges("fish", shops, files)).toEqual([]);
+    expect(relevantChanges("mobile", shops, files)).toEqual(files);
+  });
+
+  test("docs, tests and workflows do not count, since they are not in the app", () => {
+    expect(
+      relevantChanges("fish", shops, [
+        "docs/new-shop.md",
+        "README.md",
+        "tests/fish/format.test.ts",
+        ".github/workflows/release.yml",
+      ]),
+    ).toEqual([]);
   });
 });

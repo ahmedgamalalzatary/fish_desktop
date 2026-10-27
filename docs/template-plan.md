@@ -360,11 +360,14 @@ the profit report.
 
 - No checks run on push: the owner chose GitHub to build only the releases they ask for (2026-10-27).
   Changes are checked locally with `npm run check`.
-- `.github/workflows/release.yml`, on a tag `<shop>-v<version>`: `node scripts/shops.ts release <tag>`
-  refuses a tag whose version differs from the shop's config, then checks the shop and builds it with
-  `tauri-apps/tauri-action`, attaching the NSIS installer to a GitHub release for that tag.
+- `.github/workflows/release.yml` runs only when started by hand for one shop
+  (`gh workflow run release.yml -f shop=fish`). `node scripts/shops.ts release <shop>` skips the build
+  when nothing in that shop's app changed since its last release tag (`relevantChanges()`: other shops'
+  folders, docs, tests and workflows don't count), and refuses a version already released. Otherwise it
+  checks the shop and builds it with `tauri-apps/tauri-action`, publishing the NSIS installer as the
+  release `<shop>-v<version>`.
 
-**Done when:** `npm run check` covers every shop; pushing a tag produces an installer.
+**Done when:** `npm run check` covers every shop; starting a release produces an installer.
 
 ---
 
@@ -385,8 +388,8 @@ the profit report.
 ### Slice 7b — Update channel per shop
 
 - Each shop config sets `plugins.updater.endpoints` to
-  `…/releases/download/<shop>-updates/latest.json`; `releaseProblems()` refuses a release tag when it
-  doesn't, or when the version differs.
+  `…/releases/download/<shop>-updates/latest.json`; `releaseProblems()` refuses a release when it
+  doesn't, or when the version was already released.
 - `release.yml` signs the build (secrets `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`)
   and copies the new `latest.json` to the fixed release `<shop>-updates` (created on first use).
 

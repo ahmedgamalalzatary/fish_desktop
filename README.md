@@ -61,16 +61,18 @@ The installer is written to `src-tauri/target/release/bundle/nsis/`.
 
 ## Releasing
 
-Set `version` in `src-tauri/shops/<shop>/tauri.conf.json`, commit and push, then push a tag:
+Nothing runs on GitHub by itself; check changes locally with `npm run check`. To release a shop, raise
+`version` in `src-tauri/shops/<shop>/tauri.conf.json`, commit and push, then start the release for that
+shop: on GitHub, Actions → Release → Run workflow, or
 
 ```sh
-git tag fish-v0.3.0
-git push origin fish-v0.3.0
+gh workflow run release.yml -f shop=fish
 ```
 
-GitHub Actions checks that shop, builds a signed installer, publishes it as a release, and points the
-shop's update channel (the `fish-updates` release) at it; installed copies then offer the update. Nothing
-runs on GitHub except for a release tag you push; check changes locally with `npm run check`.
+If nothing in that shop's app changed since its last release, nothing is built (other shops' folders,
+docs, tests and workflows don't count). Otherwise GitHub checks the shop, builds a signed installer,
+publishes it as the release `fish-v<version>`, and points the shop's update channel (the `fish-updates`
+release) at it; installed copies then offer the update. A version that was already released is refused.
 
 The update signing key is `%USERPROFILE%\.tauri\pos-updater.key` (password next to it); the repository
 holds it as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep a

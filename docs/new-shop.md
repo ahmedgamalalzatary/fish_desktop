@@ -81,13 +81,14 @@ npm run dev <new>       # run it; go through docs/smoke-test.md
 npm run check           # every shop, before committing a change to shared code
 ```
 
-The release workflow picks the shop up by itself from its tag.
+The release workflow takes the shop by its name.
 
 ## 6. Release it
 
 1. Set `version` in `src-tauri/shops/<new>/tauri.conf.json`, commit, push.
-2. `git tag <new>-v<version>` and `git push origin <new>-v<version>`.
+2. `gh workflow run release.yml -f shop=<new>` (or Actions → Release → Run workflow).
 
-The release workflow refuses the tag if the version or the update address is wrong, then builds a signed
-installer, publishes it as a GitHub release, and points the `<new>-updates` channel at it. Every later
+The release workflow refuses a version that was already released or a wrong update address, then builds a
+signed installer, publishes it as the GitHub release `<new>-v<version>`, and points the `<new>-updates`
+channel at it. Every later
 release with a higher version reaches installed copies through the in-app update banner.

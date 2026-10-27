@@ -1,15 +1,21 @@
-# Pushing a tag `<shop>-v<version>` (e.g. fish-v0.3.0) checks and builds that shop and publishes its
-# installer as a GitHub release. The version in the tag must match src-tauri/shops/<shop>/tauri.conf.json.
+# Releases one shop, only when asked: Actions → Release → Run workflow, or
+#   gh workflow run release.yml -f shop=fish
 #
-# The build is signed for auto-update (secrets TAURI_SIGNING_PRIVATE_KEY and
-# TAURI_SIGNING_PRIVATE_KEY_PASSWORD), and its latest.json is copied to the release `<shop>-updates`,
-# which installed copies of that shop check. One fixed release per shop, because GitHub's "latest
-# release" is shared by the whole repo.
+# Nothing is built when nothing in that shop's app changed since its last release (other shops' folders,
+# docs, tests and workflows don't count). Otherwise the version in src-tauri/shops/<shop>/tauri.conf.json
+# must be new; the workflow checks the shop, builds a signed installer, publishes it as the release
+# `<shop>-v<version>` (creating that tag), and copies its latest.json to the release `<shop>-updates`,
+# which installed copies of that shop check. Signing uses the secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release
 
 on:
-  push:
-    tags: ["*-v*"]
+  workflow_dispatch:
+    inputs:
+      shop:
+        description: Shop to release (a folder in src/shops, e.g. fish)
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -19,42 +25,53 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags and history, to compare with the last release
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - id: tag
-        run: node scripts/shops.ts release ${{ github.ref_name }}
-      - uses: dtolnay/rust-toolchain@stable
+      - id: plan
+        shell: bash
+        env:
+          SHOP: ${{ inputs.shop }}
+        run: node scripts/shops.ts release "$SHOP"
+      - if: steps.plan.outputs.build == 'true'
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - if: steps.plan.outputs.build == 'true'
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ steps.tag.outputs.shop }}
-      - run: npm ci
-      - run: npm run check ${{ steps.tag.outputs.shop }}
-      - uses: tauri-apps/tauri-action@v0
+          key: ${{ steps.plan.outputs.shop }}
+      - if: steps.plan.outputs.build == 'true'
+        run: npm ci
+      - if: steps.plan.outputs.build == 'true'
+        run: npm run check ${{ steps.plan.outputs.shop }}
+      - if: steps.plan.outputs.build == 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ steps.tag.outputs.name }} ${{ steps.tag.outputs.version }}
-          releaseBody: Windows installer for ${{ steps.tag.outputs.name }} ${{ steps.tag.outputs.version }}.
+          tagName: ${{ steps.plan.outputs.tag }}
+          releaseName: ${{ steps.plan.outputs.name }} ${{ steps.plan.outputs.version }}
+          releaseBody: Windows installer for ${{ steps.plan.outputs.name }} ${{ steps.plan.outputs.version }}.
           releaseDraft: false
           args: >-
-            --config src-tauri/shops/${{ steps.tag.outputs.shop }}/tauri.conf.json
+            --config src-tauri/shops/${{ steps.plan.outputs.shop }}/tauri.conf.json
             --config src-tauri/release.conf.json
-            --features ${{ steps.tag.outputs.shop }}
+            --features ${{ steps.plan.outputs.shop }}
       - name: Publish to the shop's update channel
+        if: steps.plan.outputs.build == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          CHANNEL: ${{ steps.tag.outputs.shop }}-updates
-          NAME: ${{ steps.tag.outputs.name }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          CHANNEL: ${{ steps.plan.outputs.shop }}-updates
+          NAME: ${{ steps.plan.outputs.name }}
         run: |
           gh release download "$TAG" --pattern latest.json --dir updater
           gh release view "$CHANNEL" > /dev/null 2>&1 ||

@@ -51,26 +51,53 @@ export function taskCommands(task: string, shops: string[]): string[] {
   return [...(t.once ?? []), ...shops.flatMap((s) => t.perShop?.(s) ?? [])];
 }
 
-/** A release tag is `<shop>-v<major>.<minor>.<patch>`, e.g. `fish-v0.3.0`. */
-export function parseReleaseTag(tag: string): { shop: string; version: string } {
-  const m = /^(?:refs\/tags\/)?([a-z0-9-]+?)-v(\d+\.\d+\.\d+)$/.exec(tag);
-  if (!m) throw new Error(`"${tag}" is not a release tag. Use <shop>-v<version>, e.g. fish-v0.3.0`);
-  return { shop: m[1], version: m[2] };
-}
-
 interface ShopConfig {
   version?: string;
   plugins?: { updater?: { endpoints?: string[] } };
 }
 
-/** Why a shop's config can't be released under a tag of `version`; empty when it can. */
-export function releaseProblems(shop: string, version: string, config: ShopConfig): string[] {
+/** Why a shop's config can't be released now, given the repo's tags; empty when it can. */
+export function releaseProblems(shop: string, config: ShopConfig, tags: string[]): string[] {
   const file = `src-tauri/shops/${shop}/tauri.conf.json`;
   const channel = `releases/download/${shop}-updates/latest.json`;
   const problems: string[] = [];
-  if (config.version !== version) problems.push(`the tag is ${version} but ${file} is ${config.version}`);
   if (!config.plugins?.updater?.endpoints?.some((url) => url.endsWith(`/${channel}`))) {
     problems.push(`${file} must update from ${channel}`);
   }
+  if (tags.includes(`${shop}-v${config.version}`)) {
+    problems.push(`${shop} ${config.version} is already released; raise version in ${file}`);
+  }
   return problems;
+}
+
+const versionParts = (tag: string) =>
+  tag
+    .slice(tag.lastIndexOf("-v") + 2)
+    .split(".")
+    .map(Number);
+
+/** The shop's newest release tag (`<shop>-v<version>`), or null before its first release. */
+export function latestRelease(shop: string, tags: string[]): string | null {
+  const own = tags.filter((t) => new RegExp(`^${shop}-v\\d+\\.\\d+\\.\\d+$`).test(t));
+  own.sort((a, b) => {
+    const [x, y] = [versionParts(a), versionParts(b)];
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+  });
+  return own.at(-1) ?? null;
+}
+
+/** The changed files that go into `shop`'s app: not another shop's, and not docs, tests or workflows. */
+export function relevantChanges(shop: string, shops: string[], files: string[]): string[] {
+  const others = shops.filter((s) => s !== shop);
+  const notInApp = (f: string) =>
+    f.startsWith("docs/") || f.startsWith("tests/") || f.startsWith(".github/") || f.endsWith(".md");
+  const otherShops = (f: string) =>
+    others.some(
+      (o) =>
+        f.startsWith(`src/shops/${o}/`) ||
+        f.startsWith(`src-tauri/src/shops/${o}/`) ||
+        f.startsWith(`src-tauri/shops/${o}/`) ||
+        f === `tsconfig.${o}.json`,
+    );
+  return files.filter((f) => !notInApp(f) && !otherShops(f));
 }
