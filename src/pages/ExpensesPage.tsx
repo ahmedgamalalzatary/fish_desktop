@@ -173,12 +173,12 @@ export function ExpensesPage() {
               key={r}
               type="button"
               onClick={() => setReason(r)}
-              className="h-7 rounded-full border border-line px-3 text-xs text-ink-2 transition-colors hover:border-ink-3/40 hover:bg-glass"
+              className="h-7 rounded-full border border-line px-3 text-xs text-ink-2 transition-colors hover:border-ink-3/40 hover:bg-surface"
             >
               {r}
             </button>
           ))}
-          <span className="ms-auto text-xs text-dim">يُسجَّل باسم {user.name}</span>
+          <span className="ms-auto text-xs text-muted">يُسجَّل باسم {user.name}</span>
         </div>
       </Panel>
 

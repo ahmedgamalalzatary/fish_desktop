@@ -13,12 +13,12 @@ import { cx } from "../lib/cx";
 
 const buttonTones = {
   primary: "bg-ink text-white hover:bg-ink-2 active:bg-ink-3",
-  // Charging green: only for taking money.
-  pay: "bg-charge text-ink hover:bg-[#4cd471] active:bg-charge-deep active:text-white shadow-[inset_0_-3px_0_rgb(0_0_0/0.14)]",
-  outline: "border border-line bg-white text-ink hover:border-ink-3/40 hover:bg-glass",
+  // Only for taking money.
+  pay: "bg-pay text-ink hover:bg-pay-hover active:bg-pay-deep active:text-white shadow-[inset_0_-3px_0_rgb(0_0_0/0.14)]",
+  outline: "border border-line bg-white text-ink hover:border-ink-3/40 hover:bg-surface",
   ghost: "text-ink-2 hover:bg-ink/5",
-  danger: "bg-alert text-white hover:bg-[#b52f25]",
-  "danger-ghost": "text-alert hover:bg-alert-soft",
+  danger: "bg-danger text-white hover:bg-danger-hover",
+  "danger-ghost": "text-danger hover:bg-danger-soft",
 };
 
 const buttonSizes = {
@@ -52,7 +52,7 @@ export function Button({
 }
 
 const fieldClass =
-  "w-full rounded-lg border border-line bg-white px-3 py-2 text-ink transition-colors select-text placeholder:text-dim/60 focus:border-ink-3 focus:ring-2 focus:ring-ink-3/15 focus:outline-none disabled:bg-glass disabled:text-dim";
+  "w-full rounded-lg border border-line bg-white px-3 py-2 text-ink transition-colors select-text placeholder:text-muted/60 focus:border-ink-3 focus:ring-2 focus:ring-ink-3/15 focus:outline-none disabled:bg-surface disabled:text-muted";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cx(fieldClass, className)} />;
@@ -81,7 +81,7 @@ export function Field({
         {label}
       </label>
       {children(id)}
-      {hint && <p className="mt-1 text-xs text-dim">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
 }
@@ -118,7 +118,7 @@ export function Toggle({
       </button>
       <span>
         <span className="block text-sm font-medium">{label}</span>
-        {description && <span className="block text-xs text-dim">{description}</span>}
+        {description && <span className="block text-xs text-muted">{description}</span>}
       </span>
     </label>
   );
@@ -147,7 +147,7 @@ export function Segmented<T extends string>({
           className={cx(
             "flex flex-1 items-center justify-center gap-2 rounded-lg font-medium transition-colors",
             size === "lg" ? "h-12 text-base" : "h-9 text-sm",
-            value === o.value ? "bg-white text-ink shadow-sm" : "text-dim hover:text-ink",
+            value === o.value ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink",
           )}
         >
           {o.label}
@@ -189,7 +189,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cx(
-          "relative flex max-h-full w-full flex-col overflow-hidden rounded-2xl bg-alu shadow-2xl shadow-ink/30 outline-none",
+          "relative flex max-h-full w-full flex-col overflow-hidden rounded-2xl bg-page shadow-2xl shadow-ink/30 outline-none",
           width,
         )}
       >
@@ -266,14 +266,14 @@ export function Screen({
     <div
       className={cx("rounded-[26px] bg-ink-3 p-1 shadow-[inset_0_1px_0_rgb(255_255_255/0.14)]", className)}
     >
-      <div className="relative rounded-[22px] bg-screen px-5 pt-3 pb-3 text-screen-ink">
+      <div className="relative rounded-[22px] bg-readout px-5 pt-3 pb-3 text-readout-ink">
         {size !== "md" && (
           <div
             className="mx-auto mb-1 h-[18px] w-[72px] rounded-full bg-black ring-1 ring-white/5"
             aria-hidden
           />
         )}
-        <div className="text-xs text-screen-ink/60">{label}</div>
+        <div className="text-xs text-readout-ink/60">{label}</div>
         <div
           dir="ltr"
           className={cx(
@@ -283,7 +283,7 @@ export function Screen({
           )}
         >
           <span>{value}</span>
-          {unit && <span className="font-sans text-sm font-normal text-screen-ink/60">{unit}</span>}
+          {unit && <span className="font-sans text-sm font-normal text-readout-ink/60">{unit}</span>}
         </div>
       </div>
     </div>
@@ -317,7 +317,7 @@ export function Keypad({
           type="button"
           onClick={() => press(k)}
           aria-label={k === "back" ? "مسح" : k}
-          className="flex h-14 items-center justify-center rounded-2xl border border-line bg-white font-display text-2xl font-light text-ink transition-colors hover:bg-glass active:bg-ink/10"
+          className="flex h-14 items-center justify-center rounded-2xl border border-line bg-white font-display text-2xl font-light text-ink transition-colors hover:bg-surface active:bg-ink/10"
         >
           {k === "back" ? <Delete className="size-6" /> : k}
         </button>
@@ -336,7 +336,7 @@ export function Badge({
   const tones = {
     neutral: "bg-ink/[0.07] text-ink-2",
     success: "bg-ok-soft text-ok",
-    danger: "bg-alert-soft text-alert",
+    danger: "bg-danger-soft text-danger",
     ink: "bg-ink text-white",
   };
   return (
@@ -359,7 +359,7 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
       <p className="text-base font-medium">{title}</p>
-      {children && <div className="max-w-sm text-sm text-dim">{children}</div>}
+      {children && <div className="max-w-sm text-sm text-muted">{children}</div>}
     </div>
   );
 }

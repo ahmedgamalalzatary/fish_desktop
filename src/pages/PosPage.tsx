@@ -106,7 +106,7 @@ export function PosPage() {
         <div className="flex flex-col gap-3 border-b border-line bg-white px-6 pt-5 pb-4">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute start-3 top-1/2 size-5 -translate-y-1/2 text-dim" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 size-5 -translate-y-1/2 text-muted" />
               <input
                 ref={searchRef}
                 autoFocus
@@ -114,7 +114,7 @@ export function PosPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchEnter())}
                 placeholder="امسح الرقم التسلسلي أو ابحث بالموديل أو السعة أو اللون"
-                className="h-12 w-full rounded-xl border border-line bg-alu ps-11 pe-4 text-base select-text placeholder:text-dim/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
+                className="h-12 w-full rounded-xl border border-line bg-page ps-11 pe-4 text-base select-text placeholder:text-muted/70 focus:border-ink-3 focus:bg-white focus:ring-2 focus:ring-ink-3/15 focus:outline-none"
               />
             </div>
             <Button tone="outline" size="md" className="h-12" onClick={() => setShowToday(true)}>
@@ -173,7 +173,7 @@ export function PosPage() {
 
         <div className="flex-1 overflow-y-auto px-5">
           {cart.length === 0 ? (
-            <p className="py-16 text-center text-sm leading-7 text-dim">
+            <p className="py-16 text-center text-sm leading-7 text-muted">
               امسح الرقم التسلسلي للجهاز
               <br />
               أو اختر الموديل من القائمة.
@@ -187,8 +187,8 @@ export function PosPage() {
                     <div dir="auto" className="truncate text-right font-medium">
                       {l.product.name}
                     </div>
-                    <div className="truncate text-sm text-dim">{phoneDetails(l.phone) || "—"}</div>
-                    <div dir="ltr" className="truncate text-right text-xs text-dim">
+                    <div className="truncate text-sm text-muted">{phoneDetails(l.phone) || "—"}</div>
+                    <div dir="ltr" className="truncate text-right text-xs text-muted">
                       {l.phone.serial}
                     </div>
                   </div>
@@ -307,7 +307,7 @@ function StockBars({ level }: { level: 0 | 1 | 2 | 3 }) {
           className={cx(
             "w-[3px] rounded-[1px]",
             ["h-1.5", "h-2.5", "h-3.5"][bar - 1],
-            bar <= level ? (level === 1 ? "bg-alert" : "bg-ink-2") : "bg-line",
+            bar <= level ? (level === 1 ? "bg-danger" : "bg-ink-2") : "bg-line",
           )}
         />
       ))}
@@ -353,7 +353,7 @@ function ProductCard({
             </span>
           ))}
           {storages.length > 3 && (
-            <span className="rounded-md bg-alu px-1.5 py-0.5 text-[11px] leading-4 text-ink-2">
+            <span className="rounded-md bg-page px-1.5 py-0.5 text-[11px] leading-4 text-ink-2">
               +{storages.length - 3}
             </span>
           )}
@@ -364,7 +364,7 @@ function ProductCard({
         <div
           className={cx(
             "flex items-center gap-1.5 text-xs",
-            left <= 1 ? "font-medium text-alert" : "text-dim",
+            left <= 1 ? "font-medium text-danger" : "text-muted",
           )}
         >
           <StockBars level={left === 0 ? 0 : left === 1 ? 1 : left > 4 ? 3 : 2} />
@@ -372,9 +372,9 @@ function ProductCard({
         </div>
         {left > 0 && (
           <div className="text-end leading-tight">
-            {new Set(prices).size > 1 && <span className="block text-[11px] text-dim">يبدأ من</span>}
+            {new Set(prices).size > 1 && <span className="block text-[11px] text-muted">يبدأ من</span>}
             <span className="font-display text-xl font-normal">{formatAmount(Math.min(...prices))}</span>
-            <span className="ms-1 text-[11px] text-dim">{currency}</span>
+            <span className="ms-1 text-[11px] text-muted">{currency}</span>
           </div>
         )}
       </div>
@@ -398,7 +398,7 @@ function PickPhoneModal({
 }) {
   return (
     <Modal title={product.name} onClose={onClose} width="max-w-3xl">
-      <p className="mb-3 text-sm text-dim">اختر الجهاز الذي يأخذه العميل، وطابق رقمه التسلسلي مع العلبة.</p>
+      <p className="mb-3 text-sm text-muted">اختر الجهاز الذي يأخذه العميل، وطابق رقمه التسلسلي مع العلبة.</p>
       <div className="grid grid-cols-3 gap-3">
         {phones.map((x) => (
           <button
@@ -409,15 +409,15 @@ function PickPhoneModal({
           >
             <span className="font-semibold">{[x.storage, x.color].filter(Boolean).join(" · ") || "—"}</span>
             {x.battery !== null && (
-              <span className={cx("text-xs", x.battery < 80 ? "text-alert" : "text-dim")}>
+              <span className={cx("text-xs", x.battery < 80 ? "text-danger" : "text-muted")}>
                 البطارية {x.battery}%
               </span>
             )}
-            <span dir="ltr" className="text-xs text-dim">
+            <span dir="ltr" className="text-xs text-muted">
               {x.serial}
             </span>
             <span className="mt-1 font-display text-lg">
-              {formatAmount(x.price)} <span className="font-sans text-[11px] text-dim">{currency}</span>
+              {formatAmount(x.price)} <span className="font-sans text-[11px] text-muted">{currency}</span>
             </span>
           </button>
         ))}
@@ -518,7 +518,7 @@ function CheckoutModal({
       width="max-w-3xl"
       footer={
         <>
-          <span className="me-auto text-sm text-dim">
+          <span className="me-auto text-sm text-muted">
             {given > 0 &&
               `المدفوع ${formatMoney(given, settings.currency)} من ${formatMoney(total, settings.currency)}`}
           </span>
@@ -565,9 +565,9 @@ function CheckoutModal({
                     onClick={() => select(m)}
                     className="flex h-16 flex-1 items-center gap-3 ps-4 text-start"
                   >
-                    <Icon className={cx("size-5", selected ? "text-ink" : "text-dim")} />
+                    <Icon className={cx("size-5", selected ? "text-ink" : "text-muted")} />
                     <span className="font-medium">{paymentLabels[m]}</span>
-                    {m === auto && <span className="text-xs text-dim">الباقي تلقائياً</span>}
+                    {m === auto && <span className="text-xs text-muted">الباقي تلقائياً</span>}
                     <span
                       dir="ltr"
                       className={cx(
@@ -577,7 +577,7 @@ function CheckoutModal({
                       )}
                     >
                       {text === "" ? "0" : text}
-                      {selected && !fresh && <span className="ms-0.5 animate-pulse text-dim">|</span>}
+                      {selected && !fresh && <span className="ms-0.5 animate-pulse text-muted">|</span>}
                     </span>
                   </button>
                   {text !== "" && (
@@ -594,7 +594,7 @@ function CheckoutModal({
               );
             })}
           </div>
-          <p className="text-sm text-dim">
+          <p className="text-sm text-muted">
             {active === "cash"
               ? "اكتب المبلغ الذي سلّمه العميل نقداً، ويُحسب الباقي تلقائياً."
               : "تأكد من نجاح العملية على جهاز الدفع قبل التأكيد."}
@@ -738,14 +738,14 @@ function TodaySalesModal({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => api.getSale(s.id).then(setOpen, (e) => toast(errorMessage(e), "error"))}
-                  className="flex w-full items-center gap-4 px-4 py-3 text-start hover:bg-glass"
+                  className="flex w-full items-center gap-4 px-4 py-3 text-start hover:bg-surface"
                 >
                   <span className="w-16 font-medium">#{s.id}</span>
-                  <span className="text-sm text-dim" dir="ltr">
+                  <span className="text-sm text-muted" dir="ltr">
                     {formatDateTime(s.created_at).split(" ")[1]}
                   </span>
-                  <span className="text-sm text-dim">{paymentNames(s.methods)}</span>
-                  <span className="text-sm text-dim">{s.cashier_name}</span>
+                  <span className="text-sm text-muted">{paymentNames(s.methods)}</span>
+                  <span className="text-sm text-muted">{s.cashier_name}</span>
                   <span className="ms-auto font-semibold">{formatAmount(s.total)}</span>
                 </button>
               </li>

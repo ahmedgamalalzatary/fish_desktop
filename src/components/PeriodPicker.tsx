@@ -40,7 +40,7 @@ export function PeriodPicker({
             onChange={(e) => e.target.value && onChange(preset, { ...range, from: e.target.value })}
             aria-label="من"
           />
-          <span className="text-dim">إلى</span>
+          <span className="text-muted">إلى</span>
           <Input
             type="date"
             className="w-40"

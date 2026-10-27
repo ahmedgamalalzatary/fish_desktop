@@ -1,0 +1,34 @@
+/* Mobile shop look. Shared components only use these role names, so each shop restyles them here. */
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-sans-arabic/700.css";
+@import "@fontsource-variable/alexandria";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  /* Thin geometric numerals for the lock-screen readouts and headings. */
+  --font-display: "Alexandria Variable", "IBM Plex Sans Arabic", sans-serif;
+
+  /* Brushed aluminium and graphite, like the back of a phone; green is reserved for taking money. */
+  --color-page: #e8ebee;
+  --color-surface: #f7f8fa;
+  --color-line: #d4d9df;
+  --color-muted: #66707c;
+  --color-ink: #1a1d23;
+  --color-ink-2: #2b3038;
+  --color-ink-3: #454c57;
+  --color-pay: #34c759;
+  --color-pay-hover: #4cd471;
+  --color-pay-deep: #248a3d;
+  --color-ok: #1f7a45;
+  --color-ok-soft: #dcf1e3;
+  --color-danger: #d83a2f;
+  --color-danger-hover: #b52f25;
+  --color-danger-soft: #fbe3e1;
+  /* Chart marks: indigo, readable on white in both bars and text. */
+  --color-chart: #3d5afe;
+  /* Totals readout, an OLED screen: true black with cool white text. */
+  --color-readout: #050608;
+  --color-readout-ink: #f2f5fa;
+}

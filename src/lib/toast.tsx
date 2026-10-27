@@ -28,13 +28,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             role={t.tone === "error" ? "alert" : "status"}
             className={`flex max-w-lg items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-medium shadow-lg shadow-ink/20 ${
-              t.tone === "error" ? "bg-alert text-white" : "bg-ink text-white"
+              t.tone === "error" ? "bg-danger text-white" : "bg-ink text-white"
             }`}
           >
             {t.tone === "error" ? (
               <CircleAlert className="size-5 shrink-0" />
             ) : (
-              <CircleCheck className="size-5 shrink-0 text-screen-ink" />
+              <CircleCheck className="size-5 shrink-0 text-readout-ink" />
             )}
             {t.message}
           </div>

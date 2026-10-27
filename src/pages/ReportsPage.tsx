@@ -300,7 +300,7 @@ export function ReportsPage() {
       cell: (r) => (
         <span
           dir="ltr"
-          className={r.change_qty < 0 ? "text-alert print:text-black" : "text-ok print:text-black"}
+          className={r.change_qty < 0 ? "text-danger print:text-black" : "text-ok print:text-black"}
         >
           {r.change_qty > 0 ? "+" : "−"}
           {Math.abs(r.change_qty)}
@@ -379,7 +379,7 @@ export function ReportsPage() {
   ];
 
   const signed = (cents: number) => (
-    <span className={cents < 0 ? "text-alert print:text-black" : undefined}>{formatAmount(cents)}</span>
+    <span className={cents < 0 ? "text-danger print:text-black" : undefined}>{formatAmount(cents)}</span>
   );
   const periodColumns: Column<PeriodRow>[] = [
     { header: "الفترة", cell: (r) => periodName(r.period) },
@@ -522,7 +522,7 @@ export function ReportsPage() {
         title="التقارير"
         actions={
           <>
-            <span className="text-sm text-dim">التقرير الشامل:</span>
+            <span className="text-sm text-muted">التقرير الشامل:</span>
             <ExportButtons fileName={`تقرير-شامل-${fileRange}`} document={fullDocument} />
           </>
         }
@@ -536,7 +536,7 @@ export function ReportsPage() {
       <Panel className="mb-6 grid grid-cols-[1.4fr_1.4fr_repeat(4,1fr)] divide-x divide-x-reverse divide-line">
         {figures.slice(0, 6).map((f, i) => (
           <div key={f.label} className="px-5 py-4">
-            <div className="text-sm text-dim">{f.label}</div>
+            <div className="text-sm text-muted">{f.label}</div>
             <div className={cx("mt-1 font-semibold", i < 2 ? "text-2xl" : "text-lg")}>{f.value}</div>
           </div>
         ))}
@@ -554,7 +554,7 @@ export function ReportsPage() {
               onClick={() => setTab(t.value)}
               className={cx(
                 "shrink-0 border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
-                tab === t.value ? "border-ink text-ink" : "border-transparent text-dim hover:text-ink",
+                tab === t.value ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink",
               )}
             >
               {t.label}
@@ -603,7 +603,7 @@ export function ReportsPage() {
                   )}
                 />
               </dl>
-              <p className="mt-4 text-xs leading-5 text-dim">
+              <p className="mt-4 text-xs leading-5 text-muted">
                 تكلفة البضاعة تُحسب في الربح عند بيعها، لا عند شرائها؛ لذلك قد تختلف المشتريات عن تكلفة
                 الأجهزة المباعة.
               </p>
@@ -689,7 +689,7 @@ export function ReportsPage() {
       )}
       {tab === "suppliers" && (
         <>
-          <p className="mb-3 text-sm text-dim">
+          <p className="mb-3 text-sm text-muted">
             المشتريات والمدفوع خلال الفترة المختارة، و«المستحق حالياً» هو رصيد كل مورد اليوم.
           </p>
           <TabTable empty="لا توجد مشتريات أو مستحقات للموردين">
@@ -718,7 +718,9 @@ export function ReportsPage() {
       )}
       {tab === "stock" && (
         <>
-          <p className="mb-3 text-sm text-dim">المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.</p>
+          <p className="mb-3 text-sm text-muted">
+            المخزون الحالي لكل المنتجات، بغض النظر عن الفترة المختارة.
+          </p>
           <TabTable empty="لا توجد منتجات">
             {data.stock.length > 0 && (
               <DataTable columns={stockCols} rows={data.stock} rowKey={(r) => r.phone.id} />
@@ -765,7 +767,7 @@ function TabTable({ empty, children }: { empty: string; children: ReactNode }) {
 function Line({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <dt className="text-dim">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd className={strong ? "text-lg font-semibold" : "font-medium"}>{value}</dd>
     </div>
   );
@@ -801,10 +803,10 @@ function ProfitStatement({ summary: s, currency }: { summary: ReportSummary; cur
           >
             <dt>
               {step.label}
-              {step.note && <span className="ms-2 text-xs font-normal text-dim">{step.note}</span>}
+              {step.note && <span className="ms-2 text-xs font-normal text-muted">{step.note}</span>}
             </dt>
             <dd dir="ltr" className="font-display text-xl font-light">
-              {step.kind === "minus" && <span className="me-1 text-dim">−</span>}
+              {step.kind === "minus" && <span className="me-1 text-muted">−</span>}
               {formatAmount(step.value)}
             </dd>
           </div>
@@ -856,7 +858,7 @@ function DailyChart({
             dataKey="day"
             reversed
             tickFormatter={(d: string) => d.slice(8) + "/" + d.slice(5, 7)}
-            tick={{ fill: "var(--color-dim)", fontSize: 12 }}
+            tick={{ fill: "var(--color-muted)", fontSize: 12 }}
             axisLine={{ stroke: "var(--color-line)" }}
             tickLine={false}
             minTickGap={16}
@@ -864,7 +866,7 @@ function DailyChart({
           <YAxis
             orientation="right"
             tickFormatter={(v: number) => (v / 100).toLocaleString("en-US")}
-            tick={{ fill: "var(--color-dim)", fontSize: 12 }}
+            tick={{ fill: "var(--color-muted)", fontSize: 12 }}
             axisLine={false}
             tickLine={false}
             width={64}

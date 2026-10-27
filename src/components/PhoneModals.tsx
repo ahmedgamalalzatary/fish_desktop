@@ -82,7 +82,7 @@ export function ModelPhonesModal({
       width="max-w-5xl"
       footer={
         <>
-          <span className="me-auto text-sm text-dim">
+          <span className="me-auto text-sm text-muted">
             {formatPhones(rows.length)} · بسعر البيع {formatMoney(value, settings.currency)}
           </span>
           {product.active && (
@@ -153,7 +153,7 @@ export function AddPhonesModal({
       width="max-w-5xl"
       footer={
         <>
-          <span className="me-auto text-sm text-dim">
+          <span className="me-auto text-sm text-muted">
             <Smartphone className="me-1 inline size-4" />
             {formatPhones(drafts.filter((d) => !isBlank(d)).length)}
           </span>
@@ -371,7 +371,7 @@ export function RemovePhoneModal({
       >
         <div className="rounded-xl border border-line bg-white px-4 py-3">
           <div className="font-medium">{row.product.name}</div>
-          <div className="text-sm text-dim">
+          <div className="text-sm text-muted">
             <span dir="ltr">{row.phone.serial}</span>
             {phoneDetails(row.phone) && ` · ${phoneDetails(row.phone)}`} · {formatAmount(row.phone.price)}
           </div>
@@ -388,7 +388,7 @@ export function RemovePhoneModal({
               key={r}
               type="button"
               onClick={() => setNote(r)}
-              className="h-7 rounded-full border border-line px-3 text-xs text-ink-2 transition-colors hover:border-ink-3/40 hover:bg-glass"
+              className="h-7 rounded-full border border-line px-3 text-xs text-ink-2 transition-colors hover:border-ink-3/40 hover:bg-surface"
             >
               {r}
             </button>

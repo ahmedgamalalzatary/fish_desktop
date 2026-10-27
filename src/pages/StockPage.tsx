@@ -100,7 +100,7 @@ export function StockPage() {
       <Panel className="mb-6 grid grid-cols-4 divide-x divide-x-reverse divide-line">
         {figures.map((f) => (
           <div key={f.label} className="px-5 py-4">
-            <div className="text-sm text-dim">{f.label}</div>
+            <div className="text-sm text-muted">{f.label}</div>
             <div className="mt-1 text-lg font-semibold">{f.value}</div>
           </div>
         ))}
@@ -108,7 +108,7 @@ export function StockPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative w-80">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-dim" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}

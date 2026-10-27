@@ -36,7 +36,7 @@ export function PhoneLines({
 
   return (
     <div className="rounded-xl border border-line bg-white">
-      <div className={cx("grid gap-2 border-b border-line px-4 py-2.5 text-sm font-medium text-dim", grid)}>
+      <div className={cx("grid gap-2 border-b border-line px-4 py-2.5 text-sm font-medium text-muted", grid)}>
         {products && <span>الموديل</span>}
         <span>الرقم التسلسلي</span>
         <span>السعة</span>
@@ -77,7 +77,7 @@ export function PhoneLines({
             }}
             placeholder="IMEI / S/N"
             aria-label="الرقم التسلسلي"
-            className={cx("font-medium", repeated.has(d.serial.trim().toLowerCase()) && "border-alert")}
+            className={cx("font-medium", repeated.has(d.serial.trim().toLowerCase()) && "border-danger")}
           />
           <Input
             dir="ltr"
@@ -129,7 +129,7 @@ export function PhoneLines({
           <Plus className="size-4" />
           جهاز آخر
         </Button>
-        <span className="text-xs text-dim">
+        <span className="text-xs text-muted">
           {repeated.size > 0
             ? "رقم تسلسلي مكرر في القائمة"
             : "اضغط Enter بعد الرقم التسلسلي لإضافة جهاز بنفس البيانات"}

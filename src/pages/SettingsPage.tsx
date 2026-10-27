@@ -45,7 +45,7 @@ function Section({
     <Panel className="grid grid-cols-[260px_1fr] gap-8 p-6">
       <div>
         <h2 className="font-semibold">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-dim">{description}</p>
+        <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
       </div>
       <div>{children}</div>
     </Panel>

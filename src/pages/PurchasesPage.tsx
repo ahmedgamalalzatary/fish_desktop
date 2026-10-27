@@ -141,7 +141,7 @@ function InvoicesTab({ version, onChanged }: { version: number; onChanged: () =>
           onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
           aria-label="من"
         />
-        <span className="text-dim">إلى</span>
+        <span className="text-muted">إلى</span>
         <Input
           type="date"
           className="w-40"
@@ -253,7 +253,7 @@ function SuppliersTab({
             </span>
           )}
           {s.phone && (
-            <div dir="ltr" className="text-end text-xs text-dim">
+            <div dir="ltr" className="text-end text-xs text-muted">
               {s.phone}
             </div>
           )}
@@ -275,7 +275,7 @@ function SuppliersTab({
     {
       header: "آخر فاتورة",
       cell: (s) => (
-        <span className="text-dim">
+        <span className="text-muted">
           {s.last_purchase ? formatDateTime(s.last_purchase).split(" ")[0] : "—"}
         </span>
       ),
@@ -341,9 +341,9 @@ function SuppliersTab({
 
 /** Money the shop owes in red; a supplier in credit (overpaid) in green. */
 function Balance({ amount }: { amount: number }) {
-  if (amount === 0) return <span className="text-dim">0.00</span>;
+  if (amount === 0) return <span className="text-muted">0.00</span>;
   return (
-    <span className={amount > 0 ? "font-semibold text-alert" : "font-semibold text-ok"}>
+    <span className={amount > 0 ? "font-semibold text-danger" : "font-semibold text-ok"}>
       {formatAmount(Math.abs(amount))}
       {amount < 0 && <span className="ms-1 text-xs font-normal">له رصيد</span>}
     </span>
@@ -518,7 +518,7 @@ export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; o
                 )}
               </div>
               {!payInFull && (
-                <p className="mt-1 text-xs text-dim">
+                <p className="mt-1 text-xs text-muted">
                   اكتب ما دُفع الآن، أو اتركه فارغاً إن كانت الفاتورة كلها آجلة.
                 </p>
               )}
@@ -535,13 +535,13 @@ export function PurchaseFormModal({ onClose, onSaved }: { onClose: () => void; o
               size="md"
             />
             <div className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-2.5 text-sm">
-              <span className="text-dim">يُضاف لحساب المورد</span>
+              <span className="text-muted">يُضاف لحساب المورد</span>
               <span
                 className={
                   remaining === null
-                    ? "font-semibold text-alert"
+                    ? "font-semibold text-danger"
                     : remaining > 0
-                      ? "font-semibold text-alert"
+                      ? "font-semibold text-danger"
                       : "font-semibold"
                 }
               >
@@ -688,7 +688,7 @@ export function PurchaseDetailModal({
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-dim">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd className="font-medium">{value}</dd>
     </div>
   );
@@ -1041,11 +1041,11 @@ function StatementModal({
       <div className="mb-4 grid grid-cols-4 divide-x divide-x-reverse divide-line rounded-xl border border-line bg-white">
         {figures.map((f, i) => (
           <div key={f.label} className="px-4 py-3">
-            <div className="text-sm text-dim">{f.label}</div>
+            <div className="text-sm text-muted">{f.label}</div>
             <div
               className={
                 i === 3 && balance > 0
-                  ? "mt-0.5 text-lg font-semibold text-alert"
+                  ? "mt-0.5 text-lg font-semibold text-danger"
                   : "mt-0.5 text-lg font-semibold"
               }
             >

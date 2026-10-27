@@ -85,7 +85,7 @@ export function ProductsPage() {
             ))}
           </div>
         ) : (
-          <span className="text-dim">—</span>
+          <span className="text-muted">—</span>
         );
       },
     },
@@ -97,10 +97,10 @@ export function ProductsPage() {
         p.phones.length ? (
           <span className="inline-flex items-center gap-1 font-medium underline decoration-line underline-offset-4">
             {formatPhones(p.phones.length)}
-            <ChevronLeft className="size-4 text-dim" />
+            <ChevronLeft className="size-4 text-muted" />
           </span>
         ) : (
-          <span className="font-medium text-alert">لا يوجد</span>
+          <span className="font-medium text-danger">لا يوجد</span>
         ),
     },
     {
@@ -153,7 +153,7 @@ export function ProductsPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative w-72">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-dim" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -274,7 +274,7 @@ function NewModelModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         <div>
           <h3 className="mb-2 text-sm font-medium text-ink-2">الأجهزة المتوفرة الآن (اختياري)</h3>
           <PhoneLines drafts={drafts} onChange={setDrafts} />
-          <p className="mt-2 text-xs text-dim">
+          <p className="mt-2 text-xs text-muted">
             الأجهزة المستلمة من مورد تُسجَّل من «فاتورة شراء» حتى تُضاف إلى حسابه.
           </p>
         </div>

@@ -44,7 +44,7 @@ export function LoginPage({
       <section className="flex flex-1 flex-col items-center p-8">
         <form onSubmit={submit} className="my-auto w-full max-w-sm">
           <h1 className="text-3xl font-semibold">{firstRun ? "إنشاء حساب المدير" : "تسجيل الدخول"}</h1>
-          <p className="mt-2 mb-8 text-dim">
+          <p className="mt-2 mb-8 text-muted">
             {firstRun
               ? "هذا أول تشغيل للبرنامج. أنشئ حساب المدير لتضيف المنتجات والموظفين بعد ذلك."
               : "أدخل اسم المستخدم وكلمة المرور."}
@@ -97,7 +97,7 @@ export function LoginPage({
           </div>
 
           {error && (
-            <p role="alert" className="mt-4 rounded-lg bg-alert-soft px-3 py-2 text-sm text-alert">
+            <p role="alert" className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
               {error}
             </p>
           )}
@@ -106,7 +106,7 @@ export function LoginPage({
             {firstRun ? "إنشاء الحساب والدخول" : "دخول"}
           </Button>
         </form>
-        <footer className="flex items-center gap-3 text-sm text-dim">
+        <footer className="flex items-center gap-3 text-sm text-muted">
           <img src="/logo.jpeg" alt="" className="size-10 rounded-full" />
           <span>
             تصميم وتطوير{" "}
@@ -133,14 +133,14 @@ function LockScreen() {
 
   return (
     <div className="rounded-[3.25rem] bg-ink-3 p-2 shadow-[0_40px_80px_-20px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.12)]">
-      <div className="relative flex h-[30rem] w-60 flex-col items-center rounded-[2.75rem] bg-screen px-6 pt-4 text-screen-ink">
+      <div className="relative flex h-[30rem] w-60 flex-col items-center rounded-[2.75rem] bg-readout px-6 pt-4 text-readout-ink">
         <div className="h-6 w-20 rounded-full bg-black ring-1 ring-white/5" aria-hidden />
-        <div className="mt-10 text-sm text-screen-ink/70">{date}</div>
+        <div className="mt-10 text-sm text-readout-ink/70">{date}</div>
         <div dir="ltr" className="font-display text-6xl leading-tight font-extralight">
           {time}
         </div>
         <div className="mt-auto mb-8 text-center font-display text-xl font-light">نقطة بيع الموبايلات</div>
-        <div className="mb-2 h-1 w-24 rounded-full bg-screen-ink/60" aria-hidden />
+        <div className="mb-2 h-1 w-24 rounded-full bg-readout-ink/60" aria-hidden />
       </div>
     </div>
   );
