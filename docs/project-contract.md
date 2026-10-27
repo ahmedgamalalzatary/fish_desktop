@@ -26,8 +26,8 @@ theme.
 
 | Shop | App name | Identifier | Version | Database | Domain |
 | --- | --- | --- | --- | --- | --- |
-| `fish` | Fish POS — نقطة بيع الأسماك | `com.fishshop.pos` | `0.3.0` | `fish-pos.db` | Fish, sold by weight (per kg) or in fixed-weight packs, with two-level categories |
-| `mobile` | Mobile POS — نقطة بيع الموبايلات | `com.mobileshop.pos` | `0.5.0` | `phones.db` | Phones, one row per physical device by serial (IMEI / S/N), no categories |
+| `fish` | Fish POS — نقطة بيع الأسماك | `com.fishshop.pos` | `0.3.1` | `fish-pos.db` | Fish, sold by weight (per kg) or in fixed-weight packs, with two-level categories |
+| `mobile` | Mobile POS — نقطة بيع الموبايلات | `com.mobileshop.pos` | `0.5.1` | `phones.db` | Phones, one row per physical device by serial (IMEI / S/N), no categories |
 
 A build always targets exactly one shop. There is no default shop.
 
@@ -1004,8 +1004,8 @@ mode's own tests.
   data:; font-src 'self' data:`; bundle NSIS with default icons; updater public key and
   `installMode: "passive"`; dev URL 1420; frontend dist `../dist`; base build commands deliberately
   fail, telling you to pick a shop.
-- Shop configs: fish product "Fish POS", version 0.3.0, `com.fishshop.pos`, window title "نقطة بيع
-  الأسماك"; mobile product "Mobile POS", version 0.5.0, `com.mobileshop.pos`, title "نقطة بيع
+- Shop configs: fish product "Fish POS", version 0.3.1, `com.fishshop.pos`, window title "نقطة بيع
+  الأسماك"; mobile product "Mobile POS", version 0.5.1, `com.mobileshop.pos`, title "نقطة بيع
   الموبايلات"; both 1366×820 / min 1100×680 / centered; build commands use `vite --mode <shop>` and
   `tsc -p tsconfig.<shop>.json && vite build --mode <shop>`.
 - `release.conf.json`: `bundle.createUpdaterArtifacts = true`.
