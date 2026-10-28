@@ -56,6 +56,7 @@ A build always targets exactly one shop. There is no default shop.
 | Backup | One-click consistent DB copy (`VACUUM INTO`); automatic daily copy (newest 7 kept) and a copy before every database update (newest 3 kept), in `backups/` next to the DB |
 | Updates | Signed in-app updater: installs by itself on the screens before sign-in, then restarts; admin banner once signed in; manual check in settings |
 | Activation | One activation code per PC and shop, forever; release builds refuse setup and sign-in until activated |
+| Password reset | Forgotten admin password: the login screen shows a one-time reset code for this PC; the owner's signed reply lets a new admin password be set |
 | Theme | Role colour/font tokens; each shop supplies values |
 
 ### 2.2 Fish only
@@ -114,8 +115,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `vite.config.ts` | React + Tailwind plugins, `@shop` alias from Vite mode, Tauri dev server settings, Vitest include |
 | `shops.ts` | Shop discovery, task command lists, release rules, change filtering (tested) |
 | `scripts/shops.ts` | CLI: list shops, run a task for all/one shop, plan a release |
-| `scripts/activation.ts` | Activation codes: base32, device-code normalizing, Ed25519 signing (tested) |
-| `scripts/activation-code.ts` | CLI: make a PC's activation code; `--new-key` (once) / `--public-key` |
+| `scripts/activation.ts` | Activation codes and reset replies: base32, code normalizing, Ed25519 signing (tested) |
+| `scripts/activation-code.ts` | CLI: make a PC's activation code; `--reset <code>` a reset reply; `--new-key` (once) / `--public-key` |
 | `tsconfig.json` | Editor TS project; `@shop` points at `mobile`; strict settings |
 | `tsconfig.fish.json` | `@shop` → fish; checks shared folders + fish + its tests |
 | `tsconfig.mobile.json` | `@shop` → mobile; checks shared folders + mobile + its tests |
@@ -164,7 +165,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `lib/updateState.ts` | Updater state machine, percent, status text, `installsNow` (tested) |
 | `lib/updater.ts` | `useUpdater`: plugin check/install/relaunch; one install at a time |
 | `pages/ActivationPage.tsx` | First start on a PC: device code with copy, activation code entry |
-| `pages/LoginPage.tsx` | First-run admin creation or login; shop art and footer |
+| `pages/LoginPage.tsx` | First-run admin creation or login; shop art and footer; "forgot admin password" link |
+| `pages/ResetPasswordPage.tsx` | Forgotten admin password: reset code with copy, owner's reply, pick admin, new password |
 | `pages/EmployeesPage.tsx` | User list and form; roles, activity, password |
 | `pages/ExpensesPage.tsx` | Record/filter/delete expenses; totals and print |
 | `pages/PurchasesPage.tsx` | Invoices and suppliers tabs, purchase form/detail, payments, statements |
@@ -417,11 +419,16 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
   Admin sees `<UpdateBanner/>` above the page. Logout is in the sidebar footer.
 - `ActivationPage`: shop art; the device code (selectable, copy button); a box for the activation
   code (any case, spaces or dashes); errors in an alert box; success goes on to sign-in/setup.
+- `ResetPasswordPage`: back link to sign-in; the PC's reset code (selectable, copy button) and a box
+  for the owner's reply; once accepted, a choice of active admin (name and username) and a new
+  password with confirmation; success signs that admin in. Employees' passwords are reset by an admin
+  in Employees instead.
 - `StartupUpdate`: checks once when shown; if an update exists it installs straight away behind a
   full-screen "جارٍ تحديث البرنامج" overlay with progress, then the app restarts. Offline or failed
   checks stay silent.
 - `LoginPage`: first run asks name/username/password/confirm and creates the admin (then signs in);
-  later runs ask username/password. Errors show in an alert box. Footer: logo, "BIT Technologies",
+  later runs ask username/password, with a "نسيت كلمة مرور المدير؟" link to `ResetPasswordPage`. Errors
+  show in an alert box. Footer: logo, "BIT Technologies",
   current year. The left art comes from the shop.
 
 ### 5.2 Shared libraries — exact behavior
@@ -521,7 +528,9 @@ Fish additionally uses `--color-tag` and `--color-tag-deep` in its own component
   now, then a look every hour).
 - `AppState`: `Mutex<Connection>` + `Mutex<Option<SessionUser>>` + `Activation`; `user()` errors if
   signed out; `admin()` errors for cashiers; `activation.require()` errors with
-  "البرنامج غير مفعّل على هذا الجهاز" until activated.
+  "البرنامج غير مفعّل على هذا الجهاز" until activated. `Activation` also runs the password reset:
+  `reset_code()`, `allow_reset(reply)` (wrong reply: "كود الاستعادة غير صحيح لهذا الطلب…") and
+  `finish_reset(set)`, which refuses until a reply was accepted and then ends the reset.
 - One `invoke_handler!` macro lists all shared commands then splices the shop's `shop_commands!`.
 - `AppError` → Arabic string: "يجب تسجيل الدخول أولاً", "ليس لديك صلاحية لهذا الإجراء", "{what} غير موجود",
   the invalid message, "خطأ في قاعدة البيانات: …", or a custom message.
@@ -550,6 +559,9 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 | `logout` | — | — | clears session |
 | `current_user` | — | — | session user or null |
 | `change_password` | current, new_password | signed in | verifies current; new min 4 |
+| `password_reset_code` | — | activated | this PC's reset code (kept in `reset.txt` until a reset is done) |
+| `check_password_reset` | reply | activated | checks the owner's reply to the reset code; `[{ id, name, username }]` of active admins |
+| `reset_admin_password` | user_id, new_password | accepted reply | sets an active admin's password (min 4), signs them in, ends the reset |
 | `list_users` | — | admin | users with sales count |
 | `create_user` | input `{name, username, role, active, password?}` | admin | id; password required (min 4); unique username (NOCASE) |
 | `update_user` | id, input | admin | updates; optional non-empty password; self role/active guard; last-admin guard |
@@ -618,7 +630,8 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 - `int()` runs a scalar query; `open_fixture`/`int` are `#[allow(dead_code)]` for shops without fixtures.
 - Tests cover sale splitting/change, stock and negative stock, serial rules, purchase balances,
   report grouping, role rules, schema and migration behavior, daily/before-update backups and
-  pruning, activation codes (device code, accepting/refusing codes, saved activation, the gate).
+  pruning, activation codes (device code, accepting/refusing codes, saved activation, the gate),
+  password reset (reply accepted once, only on this PC, never an activation code; nothing set without it).
 
 ---
 
@@ -951,6 +964,12 @@ Shops add their own columns/tables on top.
   The activation code is the Ed25519 signature of that string, base32 in groups of five, made with
   `npm run activation-code <device code>` and the private key `%USERPROFILE%\.tauri\pos-activation.key`
   (public half in `src-tauri/src/activation.rs`). Losing the key means no new PC can be activated.
+- Password reset: `reset.txt` in the app data dir holds a random value while a reset is pending. The
+  reset code is the first 10 bytes of SHA-256 of `reset:<device code>:<that value>`, as
+  `XXXX-XXXX-XXXX-XXXX`; the reply is the Ed25519 signature of `reset:<reset code>` with the same key,
+  made with `npm run reset-code <reset code>`. Setting the password deletes `reset.txt`, so a reply
+  works once, and only on the PC that showed its code. Without the key, a forgotten admin password
+  can only be fixed by editing the database.
 
 ---
 
@@ -959,7 +978,7 @@ Shops add their own columns/tables on top.
 ### 12.1 npm
 
 Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `check`, `shops`,
-`activation-code`, `tauri` (see the table below).
+`activation-code`, `reset-code`, `tauri` (see the table below).
 
 | Script | Behavior |
 | --- | --- |
@@ -973,6 +992,7 @@ Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `chec
 | `test:watch <shop>` | `vitest --mode <shop>` in watch mode |
 | `shops` | `node scripts/shops.ts list` |
 | `activation-code <device code>` | `node scripts/activation-code.ts`: prints the PC's activation code |
+| `reset-code <reset code>` | `node scripts/activation-code.ts --reset`: prints the reply to a PC's reset code |
 
 Dependencies (current ranges): fonts Alexandria/Readex Pro/IBM Plex Sans Arabic/Lalezar; Tauri API,
 dialog, process, updater; lucide-react 1; React 19; react-router-dom 7; recharts 3; tailwind-merge 3.
@@ -1040,7 +1060,8 @@ mode's own tests.
   progress events ignored outside a download, percent cap, status text, install only before sign-in.
 - `tests/activation.test.ts` — RFC 4648 base32, device codes however typed and refusal of others,
   codes in groups of five that verify, and a pinned code for the test key (seed of 32 × `1`) that
-  `src-tauri/src/activation.rs` also accepts.
+  `src-tauri/src/activation.rs` also accepts; reset replies sign `reset:<code>` (never valid as an
+  activation code), refuse bad codes, and a pinned reply the Rust test also accepts.
 - `tests/reportTabs.test.ts` — shop sales tabs after invoices, stock tabs last, shop order preserved;
   filters keep/transform rows; empty value keeps all; no filter keeps all.
 - `tests/shops.test.ts` — folder resolution and rejection of unknown/path modes; sorted shop list;
@@ -1128,6 +1149,9 @@ Use a copy of the shop fixture for upgrade checks and a fresh database for first
     `backups/…-before-update-….db` copy of it appears.
 14. Activation (release build, fresh PC data): the device code shows; a wrong code is refused; the code
     from `npm run activation-code` activates and the app goes on to setup; restarting stays activated.
+    Password reset: "نسيت كلمة مرور المدير؟" shows a reset code that survives a restart; a wrong reply is
+    refused; the reply from `npm run reset-code` lists the admins, the new password signs in, and the
+    same reply is refused afterwards.
 15. Daily backup: after start, `backups/<db>-<today>.db` exists and opens.
 16. Update: with an older version installed and a newer release published, opening the app installs it
     before sign-in and restarts on the new version with the data unchanged.

@@ -31,6 +31,8 @@ own app, with its own name, look, database and updates.
   restarts; once someone is working, an admin sees a banner instead. The data stays as it is.
 - **Activation:** a new PC shows a device code and works only after the owner's activation code for it.
   A code is good on that one PC, for that one shop, forever.
+- **Forgotten admin password:** the sign-in screen gives a one-time reset code for that PC; your reply to
+  it lets the shop set a new admin password.
 
 What only one shop has (products by weight and categories in fish, phones by serial in mobile) lives in
 that shop's folder. On first launch, the app asks you to create the admin account.
@@ -89,9 +91,32 @@ you make its activation code and send that back to paste into the app:
 npm run activation-code 64RU-S3TU-FVO6-DQUJ
 ```
 
+The activation code is your signature of the device code. The app holds only the public half of the key,
+so it can check codes but never make them. A code works only on the PC (Windows machine id) and shop it
+was made for, and the app checks the saved code again on every start, so copying the app's files to
+another PC doesn't carry the activation. Codes use the letters A–Z and digits 2–7 only: an `O` is always
+the letter, never zero.
+
 This needs the private key `%USERPROFILE%\.tauri\pos-activation.key`. Back it up next to the update key:
-without it no new PC can be activated. Development builds skip activation (set `POS_REQUIRE_ACTIVATION=1`
-to try it).
+without it no new PC can be activated and no admin password can be reset. Development builds skip
+activation (set `POS_REQUIRE_ACTIVATION=1` to try it).
+
+## Resetting a forgotten password
+
+- **An employee forgot:** an admin sets a new password for them in **Employees**.
+- **The admin forgot:** on the sign-in screen they press **نسيت كلمة مرور المدير؟**, which shows a
+  **reset code** for that PC. The shop sends it to you; you send back the reply:
+
+  ```sh
+  npm run reset-code 7KQW-M2XA-PL4D-6ZRT
+  ```
+
+  They paste the reply, choose the admin account (it lists names and usernames, so a forgotten username
+  is found too) and set a new password, which signs them in.
+
+A reply works once, only on the PC that showed the code; the next reset gets a new code. The reset code
+stays the same until it is used, so the app may be closed while waiting for your reply. It is signed
+differently from activation codes, so neither works in place of the other.
 
 ## Where data lives
 

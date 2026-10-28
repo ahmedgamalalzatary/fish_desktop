@@ -1,6 +1,7 @@
 // Activation codes: a device code (shown by the app on a new PC) signed with the private key that
 // only the owner holds. The app checks the signature with the public key in
-// src-tauri/src/activation.rs, so it can check codes but never make them.
+// src-tauri/src/activation.rs, so it can check codes but never make them. A reset code (shown when
+// the admin password is forgotten) is answered the same way, signed as `reset:<reset code>`.
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -22,21 +23,27 @@ export function base32(bytes: Uint8Array): string {
   return out;
 }
 
-/** The device code as the app shows it (`XXXX-XXXX-XXXX-XXXX`), however it was typed or pasted. */
-export function normalizeDeviceCode(input: string): string {
+/** A device or reset code as the app shows it (`XXXX-XXXX-XXXX-XXXX`), however it was typed or pasted. */
+export function normalizeDeviceCode(input: string, kind = "device code"): string {
   const letters = input.toUpperCase().replace(/[\s_-]/g, "");
   if (!new RegExp(`^[${ALPHABET}]{16}$`).test(letters)) {
-    throw new Error(
-      `"${input}" is not a device code: it has 16 letters and digits 2-7, like ABCD-EFGH-JKLM-NPQR`,
-    );
+    throw new Error(`"${input}" is not a ${kind}: it has 16 letters and digits 2-7, like ABCD-EFGH-JKLM-NPQR`);
   }
   return letters.match(/.{4}/g)!.join("-");
 }
 
 /** The activation code for a device: its code signed with the key, in groups of five. */
 export function activationCode(key: KeyObject, deviceCode: string): string {
-  const signature = sign(null, Buffer.from(normalizeDeviceCode(deviceCode)), key);
-  return base32(signature)
+  return signed(key, normalizeDeviceCode(deviceCode));
+}
+
+/** The reply to a PC's reset code: `reset:<code>` signed with the key, in groups of five. */
+export function resetReply(key: KeyObject, resetCode: string): string {
+  return signed(key, `reset:${normalizeDeviceCode(resetCode, "reset code")}`);
+}
+
+function signed(key: KeyObject, message: string): string {
+  return base32(sign(null, Buffer.from(message), key))
     .match(/.{1,5}/g)!
     .join("-");
 }

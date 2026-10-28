@@ -14,6 +14,7 @@
     "check": "node scripts/shops.ts check",
     "shops": "node scripts/shops.ts list",
     "activation-code": "node scripts/activation-code.ts",
+    "reset-code": "node scripts/activation-code.ts --reset",
     "tauri": "tauri"
   },
   "dependencies": {

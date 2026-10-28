@@ -19,11 +19,13 @@ impl SessionUser {
     }
 }
 
-/// Whether this PC may use the app; see `crate::activation`.
+/// Whether this PC may use the app, and a forgotten admin password's reset; see `crate::activation`.
 pub struct Activation {
     pub device_code: String,
     dir: PathBuf,
     active: AtomicBool,
+    /// The owner's reset reply was accepted, so one admin password may be set without signing in.
+    reset_allowed: AtomicBool,
 }
 
 impl Activation {
@@ -32,6 +34,7 @@ impl Activation {
             device_code,
             dir,
             active: AtomicBool::new(active),
+            reset_allowed: AtomicBool::new(false),
         }
     }
 
@@ -57,6 +60,36 @@ impl Activation {
         crate::activation::save(&self.dir, code).map_err(|e| AppError::Other(e.to_string()))?;
         self.active.store(true, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// The code this PC shows for a forgotten admin password.
+    pub fn reset_code(&self) -> AppResult<String> {
+        self.require()?;
+        crate::activation::reset_code(&self.dir, &self.device_code)
+            .map_err(|e| AppError::Other(e.to_string()))
+    }
+
+    /// Checks the owner's reply to the reset code; once it passes, `finish_reset` may set a password.
+    pub fn allow_reset(&self, reply: &str) -> AppResult<()> {
+        self.require()?;
+        if !crate::activation::verify_reset(&self.dir, &self.device_code, reply) {
+            return Err(AppError::Invalid(
+                "كود الاستعادة غير صحيح لهذا الطلب. تأكد أنك نسخته كاملاً.".into(),
+            ));
+        }
+        self.reset_allowed.store(true, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Runs `set_password` if a reply was accepted, then ends the reset so the reply never works again.
+    pub fn finish_reset<T>(&self, set_password: impl FnOnce() -> AppResult<T>) -> AppResult<T> {
+        if !self.reset_allowed.load(Ordering::Relaxed) {
+            return Err(AppError::Forbidden);
+        }
+        let done = set_password()?;
+        self.reset_allowed.store(false, Ordering::Relaxed);
+        crate::activation::reset_done(&self.dir).map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(done)
     }
 }
 
@@ -118,5 +151,24 @@ mod tests {
         let activation = inactive();
         assert!(activation.activate("AAAAA-BBBBB").is_err());
         assert!(activation.require().is_err());
+    }
+
+    #[test]
+    fn a_password_is_reset_only_after_a_good_reply_and_only_once() {
+        let dir = std::env::temp_dir().join(format!("pos-state-reset-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let activation = Activation::new(dir.clone(), "ABCD-EFGH-JKLM-NPQR".into(), true);
+        assert!(activation.finish_reset(|| Ok(())).is_err(), "no reply yet");
+        activation.reset_code().unwrap();
+        assert!(activation.allow_reset("AAAAA-BBBBB").is_err());
+        assert!(
+            activation.finish_reset(|| Ok(())).is_err(),
+            "a wrong reply allows nothing"
+        );
+        assert!(
+            inactive().reset_code().is_err(),
+            "the PC must be activated first"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

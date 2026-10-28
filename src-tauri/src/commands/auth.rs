@@ -4,6 +4,7 @@ use crate::state::{AppState, SessionUser};
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rusqlite::{OptionalExtension, params};
+use serde::Serialize;
 use tauri::State;
 
 pub fn hash_password(password: &str) -> AppResult<String> {
@@ -123,4 +124,63 @@ pub fn change_password(
         params![hash_password(&new_password)?, user.id],
     )?;
     Ok(())
+}
+
+/// An admin whose forgotten password may be reset.
+#[derive(Serialize)]
+pub struct AdminAccount {
+    id: i64,
+    name: String,
+    username: String,
+}
+
+/// The code this PC shows when the admin password is forgotten; the owner answers it with
+/// `npm run reset-code <code>`.
+#[tauri::command]
+pub fn password_reset_code(state: State<AppState>) -> AppResult<String> {
+    state.activation.reset_code()
+}
+
+/// Accepts the owner's reply to the reset code and lists the admins whose password may be set.
+#[tauri::command]
+pub fn check_password_reset(state: State<AppState>, reply: String) -> AppResult<Vec<AdminAccount>> {
+    state.activation.allow_reset(&reply)?;
+    let db = state.db.lock().unwrap();
+    let mut stmt = db.prepare(
+        "SELECT id, name, username FROM users WHERE role = 'admin' AND active = 1 ORDER BY id",
+    )?;
+    let admins = stmt
+        .query_map([], |r| {
+            Ok(AdminAccount {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                username: r.get(2)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(admins)
+}
+
+/// Sets a new password for one admin after an accepted reset reply, and signs them in.
+#[tauri::command]
+pub fn reset_admin_password(
+    state: State<AppState>,
+    user_id: i64,
+    new_password: String,
+) -> AppResult<SessionUser> {
+    state.activation.finish_reset(|| {
+        let hash = hash_password(&new_password)?;
+        let db = state.db.lock().unwrap();
+        let user = db
+            .query_row(
+                "SELECT id, name, username, role FROM users WHERE id = ?1 AND role = 'admin' AND active = 1",
+                [user_id],
+                |r| Ok(SessionUser { id: r.get(0)?, name: r.get(1)?, username: r.get(2)?, role: r.get(3)? }),
+            )
+            .optional()?
+            .ok_or(AppError::NotFound("المدير"))?;
+        db.execute("UPDATE users SET password_hash = ?1 WHERE id = ?2", params![hash, user.id])?;
+        *state.session.lock().unwrap() = Some(user.clone());
+        Ok(user)
+    })
 }

@@ -1,6 +1,6 @@
 import { createPrivateKey, createPublicKey, verify } from "node:crypto";
 import { describe, expect, test } from "vitest";
-import { activationCode, base32, keyFromSeed, normalizeDeviceCode } from "../scripts/activation.ts";
+import { activationCode, base32, keyFromSeed, normalizeDeviceCode, resetReply } from "../scripts/activation.ts";
 
 // The same test key as `TEST_SEED` in src-tauri/src/activation.rs: 32 bytes of 1.
 const testKey = keyFromSeed(Buffer.alloc(32, 1));
@@ -42,9 +42,27 @@ describe("activationCode", () => {
   });
 });
 
+describe("resetReply", () => {
+  test("is `reset:<reset code>` signed with the key, so it never doubles as an activation code", () => {
+    const reply = resetReply(testKey, " abcd efgh jklm npqr ");
+    const signature = Buffer.from(base32Decode(reply.replaceAll("-", "")));
+    const key = createPublicKey(testKey);
+    expect(verify(null, Buffer.from("reset:ABCD-EFGH-JKLM-NPQR"), key, signature)).toBe(true);
+    expect(verify(null, Buffer.from("ABCD-EFGH-JKLM-NPQR"), key, signature)).toBe(false);
+    expect(reply).toBe(PINNED_RESET);
+  });
+
+  test("refuses anything that is not a reset code", () => {
+    expect(() => resetReply(testKey, "ABCD")).toThrow(/reset code/);
+  });
+});
+
 // Pinned in src-tauri/src/activation.rs too: the app must accept what this tool makes.
 const PINNED =
   "CXHF2-7SJOZ-UMLKI-KLEVT-DQCO2-U4MOE-B6IER-JH4ZH-ZPF4U-MZTJ2-C2FUR-MVXQC-FOTXG-DQQ6Q-NODZL-CAMQD-FHHXN-73YRY-SQZIG-SKYLW-KCY";
+
+const PINNED_RESET =
+  "HSQEY-VL4US-TQ3EI-NQ557-ZMGTQ-RQP6R-J2Z3M-R7RVB-YEAUY-TJB2S-RFQM5-ZUH7X-GARXS-XQ4IT-ERZTF-VFCB7-D2RWV-4EIVS-KXZKS-QWZH2-6DQ";
 
 function base32Decode(s: string): number[] {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

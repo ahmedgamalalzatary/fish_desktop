@@ -1,5 +1,6 @@
-// Makes the activation code for a shop's PC: `npm run activation-code <device code>`.
-// The device code is what the app shows on its activation screen. Needs the private key
+// Makes the activation code for a shop's PC: `npm run activation-code <device code>`, and the reply to
+// a forgotten admin password: `npm run reset-code <reset code>` (`--reset <reset code>`).
+// The codes are what the app shows on its activation and password-reset screens. Needs the private key
 // %USERPROFILE%\.tauri\pos-activation.key; `--new-key` creates it once (never again: the app only
 // accepts codes from the key whose public half is in src-tauri/src/activation.rs).
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
@@ -7,10 +8,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { activationCode } from "./activation.ts";
+import { activationCode, resetReply } from "./activation.ts";
 
 const KEY_FILE = join(homedir(), ".tauri", "pos-activation.key");
-const arg = process.argv[2] ?? "";
+const [arg = "", code = ""] = process.argv.slice(2);
 
 try {
   if (arg === "--new-key") {
@@ -25,6 +26,8 @@ try {
   if (arg === "--new-key" || arg === "--public-key") {
     const raw = createPublicKey(key).export({ format: "der", type: "spki" }).subarray(-32);
     console.log(`Public key for src-tauri/src/activation.rs:\n[${[...raw].join(", ")}]`);
+  } else if (arg === "--reset") {
+    console.log(resetReply(key, code));
   } else {
     console.log(activationCode(key, arg));
   }

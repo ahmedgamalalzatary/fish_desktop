@@ -41,6 +41,11 @@ export const api = {
   activationStatus: () => call<{ active: boolean; device_code: string }>("activation_status"),
   activate: (code: string) => call<void>("activate", { code }),
   needsSetup: () => call<boolean>("needs_setup"),
+  passwordResetCode: () => call<string>("password_reset_code"),
+  checkPasswordReset: (reply: string) =>
+    call<{ id: number; name: string; username: string }[]>("check_password_reset", { reply }),
+  resetAdminPassword: (userId: number, newPassword: string) =>
+    call<SessionUser>("reset_admin_password", { userId, newPassword }),
   setupAdmin: (name: string, username: string, password: string) =>
     call<SessionUser>("setup_admin", { name, username, password }),
   login: (username: string, password: string) => call<SessionUser>("login", { username, password }),

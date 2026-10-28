@@ -2,8 +2,13 @@
 //! identifier; the owner signs it (`npm run activation-code <device code>`) and the signature is the
 //! activation code. The app holds only the public key, so it can check codes but never make them,
 //! and a code is good on that one PC for that one shop, forever.
+//!
+//! A forgotten admin password works the same way: the app shows a reset code (this PC's device code
+//! and a random value kept until the reset is done), the owner signs `reset:<reset code>`
+//! (`npm run reset-code <reset code>`), and the app lets that reply set a new admin password once.
 
 use ed25519_dalek::{Signature, VerifyingKey};
+use rand_core::RngCore;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
@@ -14,11 +19,17 @@ pub const PUBLIC_KEY: [u8; 32] = [
 ];
 
 const FILE: &str = "activation.txt";
+const RESET_FILE: &str = "reset.txt";
 const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 /// This PC's code for the shop with `identifier`: 16 base32 letters in groups of four.
 pub fn device_code(identifier: &str, machine_id: &str) -> String {
-    let hash = Sha256::digest(format!("{identifier}:{machine_id}"));
+    short_code(&format!("{identifier}:{machine_id}"))
+}
+
+/// 16 base32 letters in groups of four, from the start of the text's SHA-256.
+fn short_code(text: &str) -> String {
+    let hash = Sha256::digest(text);
     // 10 bytes are exactly 16 letters of 5 bits.
     let letters = base32(&hash[..10]);
     letters
@@ -67,6 +78,45 @@ pub fn save(dir: &Path, code: &str) -> std::io::Result<()> {
     std::fs::write(dir.join(FILE), code.trim())
 }
 
+/// The reset code this PC shows for a forgotten admin password. It stays the same until the reset is
+/// done (so the app may be closed while waiting for the reply), then the next one is new.
+pub fn reset_code(dir: &Path, device_code: &str) -> std::io::Result<String> {
+    let path = dir.join(RESET_FILE);
+    let nonce = match std::fs::read_to_string(&path) {
+        Ok(saved) if !saved.trim().is_empty() => saved.trim().to_string(),
+        _ => {
+            let mut bytes = [0u8; 16];
+            rand_core::OsRng.fill_bytes(&mut bytes);
+            let fresh = base32(&bytes);
+            std::fs::write(&path, &fresh)?;
+            fresh
+        }
+    };
+    Ok(short_code(&format!("reset:{device_code}:{nonce}")))
+}
+
+/// Whether `reply` is the owner's signature of this PC's current reset code.
+pub fn verify_reset(dir: &Path, device_code: &str, reply: &str) -> bool {
+    verify_reset_with(&PUBLIC_KEY, dir, device_code, reply)
+}
+
+fn verify_reset_with(public_key: &[u8; 32], dir: &Path, device_code: &str, reply: &str) -> bool {
+    // Never make a new reset code here: a reply can only match one the PC already showed.
+    if !dir.join(RESET_FILE).exists() {
+        return false;
+    }
+    reset_code(dir, device_code)
+        .is_ok_and(|code| verify_with(public_key, &format!("reset:{code}"), reply))
+}
+
+/// Ends the reset, so its reply never works again and the next reset code is new.
+pub fn reset_done(dir: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(dir.join(RESET_FILE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
 fn base32(bytes: &[u8]) -> String {
     let (mut bits, mut value, mut out) = (0u32, 0u32, String::new());
     for &b in bytes {
@@ -111,6 +161,9 @@ mod tests {
     }
 
     /// Made by the owner's tool from the test key for ABCD-EFGH-JKLM-NPQR (pinned there too).
+    /// The tool's reply (`resetReply`) for reset code ABCD-EFGH-JKLM-NPQR, pinned there too.
+    const PINNED_RESET: &str = "HSQEY-VL4US-TQ3EI-NQ557-ZMGTQ-RQP6R-J2Z3M-R7RVB-YEAUY-TJB2S-RFQM5-ZUH7X-GARXS-XQ4IT-ERZTF-VFCB7-D2RWV-4EIVS-KXZKS-QWZH2-6DQ";
+
     const PINNED: &str = "CXHF2-7SJOZ-UMLKI-KLEVT-DQCO2-U4MOE-B6IER-JH4ZH-ZPF4U-MZTJ2-C2FUR-MVXQC-FOTXG-DQQ6Q-NODZL-CAMQD-FHHXN-73YRY-SQZIG-SKYLW-KCY";
 
     #[test]
@@ -166,6 +219,78 @@ mod tests {
             !saved_with(&key, &dir, "WXYZ-EFGH-JKLM-NPQR"),
             "copied to another PC"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("pos-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// What the owner's tool replies to `reset_code`, made here with the test key.
+    fn reply_to(reset_code: &str) -> String {
+        use ed25519_dalek::Signer;
+        let signature =
+            SigningKey::from_bytes(&[1; 32]).sign(format!("reset:{reset_code}").as_bytes());
+        base32(&signature.to_bytes())
+    }
+
+    #[test]
+    fn the_app_accepts_the_tool_s_reset_reply_and_not_an_activation_code() {
+        let key = test_public_key();
+        assert!(verify_with(&key, "reset:ABCD-EFGH-JKLM-NPQR", PINNED_RESET));
+        assert!(!verify_with(&key, "ABCD-EFGH-JKLM-NPQR", PINNED_RESET));
+        assert!(!verify_with(&key, "reset:ABCD-EFGH-JKLM-NPQR", PINNED));
+    }
+
+    #[test]
+    fn a_reset_code_stays_until_used_and_its_reply_works_once_on_this_pc() {
+        let dir = temp_dir("reset");
+        let key = test_public_key();
+        assert!(
+            !verify_reset_with(&key, &dir, "ABCD-EFGH-JKLM-NPQR", "AAAA"),
+            "no code shown yet"
+        );
+
+        let code = reset_code(&dir, "ABCD-EFGH-JKLM-NPQR").unwrap();
+        assert_eq!(code.len(), 19);
+        assert_eq!(
+            code,
+            reset_code(&dir, "ABCD-EFGH-JKLM-NPQR").unwrap(),
+            "kept across restarts"
+        );
+        assert_ne!(code, "ABCD-EFGH-JKLM-NPQR");
+        assert_ne!(
+            code,
+            reset_code(&dir, "WXYZ-EFGH-JKLM-NPQR").unwrap(),
+            "another PC"
+        );
+
+        let reply = reply_to(&code);
+        assert!(
+            !verify_reset_with(&key, &dir, "WXYZ-EFGH-JKLM-NPQR", &reply),
+            "copied to another PC"
+        );
+        assert!(
+            !verify_reset_with(&PUBLIC_KEY, &dir, "ABCD-EFGH-JKLM-NPQR", &reply),
+            "another key"
+        );
+        assert!(verify_reset_with(&key, &dir, "ABCD-EFGH-JKLM-NPQR", &reply));
+
+        reset_done(&dir).unwrap();
+        assert!(
+            !verify_reset_with(&key, &dir, "ABCD-EFGH-JKLM-NPQR", &reply),
+            "used already"
+        );
+        assert_ne!(
+            code,
+            reset_code(&dir, "ABCD-EFGH-JKLM-NPQR").unwrap(),
+            "the next code is new"
+        );
+        reset_done(&dir).unwrap();
+        reset_done(&dir).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

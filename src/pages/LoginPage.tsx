@@ -3,6 +3,7 @@ import { shop } from "@shop";
 import { Button, Field, Input } from "../components/ui";
 import { api } from "../lib/api";
 import type { SessionUser } from "../lib/types";
+import { ResetPasswordPage } from "./ResetPasswordPage";
 
 /** Sign-in, or creation of the first admin account on first run. */
 export function LoginPage({
@@ -18,6 +19,7 @@ export function LoginPage({
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,6 +35,8 @@ export function LoginPage({
       setBusy(false);
     }
   };
+
+  if (resetting) return <ResetPasswordPage onLogin={onLogin} onBack={() => setResetting(false)} />;
 
   return (
     <div className="flex h-full">
@@ -101,6 +105,15 @@ export function LoginPage({
           <Button type="submit" size="lg" className="mt-6 w-full justify-center" disabled={busy}>
             {firstRun ? "إنشاء الحساب والدخول" : "دخول"}
           </Button>
+          {!firstRun && (
+            <button
+              type="button"
+              onClick={() => setResetting(true)}
+              className="mx-auto mt-4 block text-sm text-muted underline-offset-4 hover:text-ink hover:underline"
+            >
+              نسيت كلمة مرور المدير؟
+            </button>
+          )}
         </form>
       </section>
     </div>
