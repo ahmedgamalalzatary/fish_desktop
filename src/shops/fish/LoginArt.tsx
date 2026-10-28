@@ -1,3 +1,5 @@
+import { MadeBy } from "../../components/MadeBy";
+
 /** The left half of the sign-in screen: the shop's sign over the sea, and what the app is for. */
 export function LoginArt() {
   return (
@@ -8,9 +10,12 @@ export function LoginArt() {
         <br />
         طازة
       </div>
-      <p className="relative max-w-xs text-lg leading-8 text-white/70">
-        البيع بالجرام أو بالأوزان الجاهزة، والمخزون يُخصم مع كل فاتورة.
-      </p>
+      <div className="relative flex flex-col gap-8">
+        <p className="max-w-xs text-lg leading-8 text-white/70">
+          البيع بالجرام أو بالأوزان الجاهزة، والمخزون يُخصم مع كل فاتورة.
+        </p>
+        <MadeBy />
+      </div>
     </section>
   );
 }

@@ -395,7 +395,7 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
    transaction; client prices are never trusted.
 6. Money is integer cents; weights are integer grams.
 7. Tailwind utilities only; no custom classes or `@apply`. Shared components use role token names.
-8. Prettier width 110, `rustfmt`, targeted checks for the touched area.
+8. `rustfmt`, targeted checks for the touched area.
 
 ---
 
@@ -977,7 +977,7 @@ Scripts: `dev`, `build`, `web`, `typecheck`, `lint`, `test`, `test:watch`, `chec
 Dependencies (current ranges): fonts Alexandria/Readex Pro/IBM Plex Sans Arabic/Lalezar; Tauri API,
 dialog, process, updater; lucide-react 1; React 19; react-router-dom 7; recharts 3; tailwind-merge 3.
 Dev: ESLint 10, Tailwind CSS 4 + Vite plugin, Tauri CLI 2, types for Node 26/React 19, Vite 8,
-Vitest 5, TypeScript 6, Prettier 3, typescript-eslint 8.
+Vitest 5, TypeScript 6, typescript-eslint 8.
 
 `vite.config.ts`: React + Tailwind plugins; `@shop` from mode; `clearScreen: false`; dev port 1420
 strict; HMR on 1421 when `TAURI_DEV_HOST` is set; ignores `src-tauri`; Vitest includes shared and the

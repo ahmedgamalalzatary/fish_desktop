@@ -102,16 +102,6 @@ export function LoginPage({
             {firstRun ? "إنشاء الحساب والدخول" : "دخول"}
           </Button>
         </form>
-        <footer className="flex items-center gap-3 text-sm text-muted">
-          <img src="/logo.jpeg" alt="" className="size-10 rounded-full" />
-          <span>
-            تصميم وتطوير{" "}
-            <span dir="ltr" className="font-medium text-ink-2">
-              BIT Technologies
-            </span>{" "}
-            © {new Date().getFullYear()}
-          </span>
-        </footer>
       </section>
     </div>
   );
