@@ -3,6 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ExtraLine } from "./extras";
 import type {
   CashierReportRow,
+  CreditReportRow,
+  Customer,
+  CustomerInput,
+  CustomerRow,
   DailyRow,
   DiscountInput,
   Expense,
@@ -75,8 +79,19 @@ export const api = {
   getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
-  createSale: (items: Cart, extras: ExtraLine[], payments: PaymentInput[], discount: DiscountInput | null) =>
-    call<Sale>("create_sale", { items, extras, payments, discount }),
+  createSale: (
+    items: Cart,
+    extras: ExtraLine[],
+    payments: PaymentInput[],
+    discount: DiscountInput | null,
+    customer: CustomerInput | null = null,
+  ) => call<Sale>("create_sale", { items, extras, payments, discount, customer }),
+  findCustomer: (phone: string) => call<Customer | null>("find_customer", { phone }),
+  listCustomers: () => call<CustomerRow[]>("list_customers"),
+  customerSales: (customerId: number) => call<Sale[]>("customer_sales", { customerId }),
+  addCreditPayment: (saleId: number, payments: PaymentInput[]) =>
+    call<Sale>("add_credit_payment", { saleId, payments }),
+  reportCredit: (range: Range) => call<CreditReportRow[]>("report_credit", range),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),

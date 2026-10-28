@@ -64,6 +64,60 @@ export interface Sale {
   items: SaleItem[];
   /** Add-ons or accessories sold with the shop's lines. */
   extras: SaleExtra[];
+  /** Set for a sale on credit (shops with `creditSales`). */
+  credit: SaleCredit | null;
+}
+
+/** Who buys on credit, as typed at checkout. */
+export interface CustomerInput {
+  name: string;
+  phone: string;
+}
+
+export interface Customer extends CustomerInput {
+  id: number;
+}
+
+/** A payment towards a sale on credit after the day of sale. */
+export interface LaterPayment {
+  id: number;
+  created_at: string;
+  user_name: string;
+  /** Everything handed over, cash change included. */
+  paid: number;
+  change_due: number;
+  /** What each method covered, change taken off. */
+  payments: Payment[];
+}
+
+/** The credit side of a sale: who owes it, what they paid since, and what is left. */
+export interface SaleCredit {
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  later: LaterPayment[];
+  remaining: number;
+}
+
+export interface CustomerRow extends Customer {
+  sales_count: number;
+  /** What their sales on credit came to. */
+  total: number;
+  paid: number;
+  owed: number;
+  last_sale: string;
+}
+
+export interface CreditReportRow {
+  sale_id: number;
+  created_at: string;
+  customer_id: number;
+  customer_name: string;
+  customer_phone: string;
+  cashier_name: string;
+  total: number;
+  paid: number;
+  remaining: number;
 }
 
 export interface SaleSummary {
@@ -99,7 +153,12 @@ export interface ReportSummary {
   purchases_cost: number;
   purchases_units: number;
   supplier_paid: number;
+  /** Money taken in by method: at the sales of the period, and later payments on credit made in it. */
   by_payment: { method: PaymentMethod; count: number; total: number }[];
+  /** Still owed now on the sales on credit made in the period. */
+  credit_owed: number;
+  /** Paid in the period towards sales on credit. */
+  credit_collected: number;
 }
 
 export interface DailyRow {

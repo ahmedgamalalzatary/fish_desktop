@@ -1,6 +1,6 @@
 import { shop } from "@shop";
 import type { Cart } from "@shop/types";
-import { Banknote, CreditCard, Smartphone, Tag, X } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, Smartphone, Tag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { ExtraLine } from "../lib/extras";
@@ -23,7 +23,7 @@ import type { DiscountInput, PaymentMethod, Sale, SaleSummary } from "../lib/typ
 import { ExportButtons } from "./ExportButtons";
 import { Receipt } from "./Receipt";
 import { ReportDocument } from "./ReportDocument";
-import { Button, Empty, Keypad, Modal, Segmented } from "./ui";
+import { Button, Empty, Field, Input, Keypad, Modal, Segmented } from "./ui";
 
 // Taking the money and showing receipts, the same in every shop. The shop's till builds the cart.
 
@@ -63,7 +63,9 @@ export function PaymentPicker({
  * selected one. The method chosen on the ticket covers whatever the others leave until the cashier
  * types into it, so with cash chosen, "15,000 by card and the rest cash" is: tap card, type 15000,
  * confirm. Only cash can be over the total, since change is given in cash. The discount row above
- * them takes a fixed amount or a percent off the ticket first.
+ * them takes a fixed amount or a percent off the ticket first. In a shop that sells on credit, "بيع
+ * آجل" lets the payments fall short: nothing covers the rest automatically, and the customer's name
+ * and phone are taken for what is left.
  */
 export function CheckoutModal({
   items,
@@ -94,6 +96,9 @@ export function CheckoutModal({
   // A value that was filled in for the cashier is replaced, not appended to, by the next key.
   const [fresh, setFresh] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [onCredit, setOnCredit] = useState(false);
+  const [customer, setCustomer] = useState({ name: "", phone: "" });
+  const [known, setKnown] = useState(false);
 
   const discount = discountText === "" ? 0 : discountAmount(total, discountKind, discountText);
   const badDiscount = discount === null;
@@ -109,14 +114,41 @@ export function CheckoutModal({
   const nonCash = amountOf("card") + amountOf("wallet");
   const remaining = due - given;
   const tooMuchNonCash = nonCash > due;
-  const canConfirm = remaining <= 0 && !tooMuchNonCash && !badDiscount && !busy;
+  // On credit with money still owed; paid in full, it is an ordinary sale.
+  const owing = onCredit && remaining > 0;
+  const canConfirm =
+    (owing ? customer.name.trim() !== "" && customer.phone.trim() !== "" : remaining <= 0) &&
+    !tooMuchNonCash &&
+    !badDiscount &&
+    !busy;
   const cashDue = Math.max(due - nonCash, 0);
 
   const select = (m: PaymentMethod | "discount") => {
     setActive(m);
     setFresh(true);
-    if (m !== "discount" && m !== auto && texts[m] === "" && remaining > 0)
+    if (!onCredit && m !== "discount" && m !== auto && texts[m] === "" && remaining > 0)
       setTexts((t) => ({ ...t, [m]: String(remaining / 100) }));
+  };
+
+  // On credit, the cashier types what the customer pays now; nothing fills in the rest.
+  const toggleCredit = () => {
+    const on = !onCredit;
+    setOnCredit(on);
+    setAuto(on ? null : payment);
+    setTexts({ cash: "", card: "", wallet: "" });
+    setActive(payment);
+    setFresh(true);
+  };
+
+  const lookUp = async () => {
+    if (!customer.phone.trim()) return;
+    try {
+      const found = await api.findCustomer(customer.phone);
+      setKnown(found !== null);
+      if (found) setCustomer((c) => ({ ...c, name: found.name }));
+    } catch {
+      setKnown(false);
+    }
   };
   const setText = (m: PaymentMethod | "discount", text: string) => {
     if (m === "discount") setDiscountText(text);
@@ -148,6 +180,7 @@ export function CheckoutModal({
               value: discountKind === "fixed" ? parseMoney(discountText)! : parseCount(discountText)!,
             }
           : null,
+        owing ? customer : null,
       );
       onDone(sale);
     } catch (e) {
@@ -165,7 +198,7 @@ export function CheckoutModal({
     : tooMuchNonCash
       ? { label: "البطاقة والمحفظة أكثر من المطلوب", value: nonCash - due, warn: true }
       : remaining > 0
-        ? { label: "المتبقي", value: remaining, warn: false }
+        ? { label: onCredit ? "يتبقى على العميل" : "المتبقي", value: remaining, warn: false }
         : {
             label: remaining < 0 ? "الباقي للعميل" : "تم سداد المبلغ",
             value: Math.abs(remaining),
@@ -187,7 +220,7 @@ export function CheckoutModal({
             رجوع
           </Button>
           <Button tone="pay" size="lg" onClick={confirm} disabled={!canConfirm} data-autofocus>
-            تأكيد الدفع
+            {owing ? "تأكيد البيع الآجل" : "تأكيد الدفع"}
           </Button>
         </>
       }
@@ -314,11 +347,59 @@ export function CheckoutModal({
               );
             })}
           </div>
-          <p className="text-sm text-muted">
-            {active === "cash"
-              ? "اكتب المبلغ الذي سلّمه العميل نقداً، ويُحسب الباقي تلقائياً."
-              : "تأكد من نجاح العملية على جهاز الدفع قبل التأكيد."}
-          </p>
+          {shop.creditSales && (
+            <button
+              type="button"
+              onClick={toggleCredit}
+              aria-pressed={onCredit}
+              className={cx(
+                "flex h-12 items-center gap-3 rounded-2xl border-2 px-4 text-start transition-colors",
+                onCredit ? "border-ink bg-white" : "border-dashed border-line text-muted hover:text-ink",
+              )}
+            >
+              <HandCoins className="size-5" />
+              <span className="font-medium">بيع آجل</span>
+              <span className="text-xs text-muted">يدفع جزءاً الآن والباقي لاحقاً</span>
+              <span className="ms-auto text-sm">{onCredit ? "مفعّل" : "تفعيل"}</span>
+            </button>
+          )}
+          {onCredit ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="هاتف العميل">
+                {(id) => (
+                  <Input
+                    id={id}
+                    dir="ltr"
+                    inputMode="tel"
+                    value={customer.phone}
+                    onChange={(e) => (setCustomer((c) => ({ ...c, phone: e.target.value })), setKnown(false))}
+                    onBlur={lookUp}
+                    placeholder="01xxxxxxxxx"
+                  />
+                )}
+              </Field>
+              <Field label={known ? "اسم العميل · عميل مسجّل" : "اسم العميل"}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={customer.name}
+                    onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+                  />
+                )}
+              </Field>
+              <p className="col-span-2 text-sm text-muted">
+                {remaining > 0
+                  ? `اكتب ما يدفعه العميل الآن (أو اتركه صفراً)؛ يُسجَّل ${formatMoney(remaining, settings.currency)} على العميل.`
+                  : "المبلغ مدفوع بالكامل، فيُسجَّل بيعاً عادياً."}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              {active === "cash"
+                ? "اكتب المبلغ الذي سلّمه العميل نقداً، ويُحسب الباقي تلقائياً."
+                : "تأكد من نجاح العملية على جهاز الدفع قبل التأكيد."}
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-3">
           <Keypad
@@ -357,16 +438,19 @@ export function CheckoutModal({
 export function ReceiptModal({
   sale,
   autoPrompt = false,
+  title,
   onClose,
 }: {
   sale: Sale;
   autoPrompt?: boolean;
+  /** Replaces the usual "invoice no." title. */
+  title?: string;
   onClose: () => void;
 }) {
   const { settings } = useSession();
   return (
     <Modal
-      title={autoPrompt ? `تم البيع · فاتورة رقم ${sale.id}` : `فاتورة رقم ${sale.id}`}
+      title={title ?? (autoPrompt ? `تم البيع · فاتورة رقم ${sale.id}` : `فاتورة رقم ${sale.id}`)}
       onClose={onClose}
       width="max-w-md"
       footer={

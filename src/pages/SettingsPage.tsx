@@ -116,6 +116,7 @@ export function SettingsPage() {
                 discount: 0,
                 discount_type: null,
                 discount_value: null,
+                credit: null,
                 ...shop.sampleSale,
               }}
               settings={draft}

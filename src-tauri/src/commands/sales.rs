@@ -1,3 +1,4 @@
+use super::credit::{self, CustomerInput, SaleCredit};
 use super::extras::{self, ExtraLine, SaleExtra};
 use crate::db::now;
 use crate::error::{AppError, AppResult, invalid};
@@ -27,6 +28,8 @@ pub struct DiscountInput {
 #[derive(Default)]
 pub struct Terms {
     pub discount: Option<DiscountInput>,
+    /// Set when the customer pays part now and owes the rest (shops with `CREDIT_SALES` only).
+    pub customer: Option<CustomerInput>,
 }
 
 /// One way the customer paid. For cash, `amount` is what was handed over, change included.
@@ -41,6 +44,17 @@ pub struct PaymentInput {
 pub struct Payment {
     method: String,
     amount: i64,
+}
+
+impl Payment {
+    pub fn new(method: String, amount: i64) -> Self {
+        Self { method, amount }
+    }
+
+    #[cfg(test)]
+    pub fn parts(&self) -> (&str, i64) {
+        (&self.method, self.amount)
+    }
 }
 
 #[derive(Serialize)]
@@ -62,6 +76,8 @@ pub struct Sale {
     items: Vec<shop::SaleItem>,
     /// Add-ons or accessories sold with them.
     extras: Vec<SaleExtra>,
+    /// Set for a sale on credit: the customer, later payments and what is left.
+    credit: Option<SaleCredit>,
 }
 
 #[derive(Serialize)]
@@ -82,17 +98,12 @@ pub fn create_sale(
     extras: Vec<ExtraLine>,
     payments: Vec<PaymentInput>,
     discount: Option<DiscountInput>,
+    customer: Option<CustomerInput>,
 ) -> AppResult<Sale> {
     let user = state.user()?;
     let mut db = state.db.lock().unwrap();
-    let sale_id = sell(
-        &mut db,
-        user.id,
-        &items,
-        &extras,
-        &payments,
-        &Terms { discount },
-    )?;
+    let terms = Terms { discount, customer };
+    let sale_id = sell(&mut db, user.id, &items, &extras, &payments, &terms)?;
     load_sale(&db, sale_id)
 }
 
@@ -110,7 +121,7 @@ pub fn insert_sale(
 
 /// Records a sale: the shop prices its cart from the database (never from the client) and writes its
 /// lines and stock changes, the extras the same way; the discount and payments are checked and stored
-/// here. All or nothing.
+/// here. On credit, the payments may fall short and the customer owes the rest. All or nothing.
 pub fn sell(
     db: &mut Connection,
     user_id: i64,
@@ -132,7 +143,16 @@ pub fn sell(
         .map(|d| discount_of(subtotal, d))
         .transpose()?;
     let total = subtotal - discount.unwrap_or(0);
-    let (covered, paid) = settle(total, payments)?;
+    let (covered, paid) = match &terms.customer {
+        None => settle(total, payments)?,
+        Some(_) => {
+            let (covered, paid) = settle_part(total, payments)?;
+            if paid >= total {
+                return invalid("المبلغ مدفوع بالكامل، فلا داعي للبيع الآجل");
+            }
+            (covered, paid)
+        }
+    };
     let ts = now();
     tx.execute(
         "INSERT INTO sales (user_id, created_at, total, cost_total, paid, change_due, discount, discount_type, discount_value)
@@ -143,7 +163,7 @@ pub fn sell(
             total,
             cost,
             paid,
-            paid - total,
+            (paid - total).max(0),
             discount.unwrap_or(0),
             terms.discount.as_ref().map(|d| &d.kind),
             terms.discount.as_ref().map(|d| d.value),
@@ -158,6 +178,9 @@ pub fn sell(
     }
     shop::record(&tx, sale_id, user_id, &ts, &priced)?;
     extras::record(&tx, sale_id, user_id, &ts, &added)?;
+    if let Some(customer) = &terms.customer {
+        credit::open(&tx, sale_id, customer, &ts)?;
+    }
     tx.commit()?;
     Ok(sale_id)
 }
@@ -180,6 +203,19 @@ const METHODS: [&str; 3] = ["cash", "card", "wallet"];
 /// a fixed order, and the total handed over. Only cash can be more than needed, since change is
 /// given back in cash; card and wallet together may not pass the total.
 fn settle(total: i64, payments: &[PaymentInput]) -> AppResult<(Vec<(&'static str, i64)>, i64)> {
+    let (covered, paid) = settle_part(total, payments)?;
+    if paid < total {
+        return invalid("المبلغ المدفوع أقل من الإجمالي");
+    }
+    Ok((covered, paid))
+}
+
+/// Like `settle`, but the payments may come to less than `due` (a payment on credit); any cash over
+/// `due` is change.
+pub fn settle_part(
+    due: i64,
+    payments: &[PaymentInput],
+) -> AppResult<(Vec<(&'static str, i64)>, i64)> {
     let mut given = [0; 3];
     for p in payments {
         let Some(i) = METHODS.iter().position(|m| *m == p.method) else {
@@ -191,14 +227,11 @@ fn settle(total: i64, payments: &[PaymentInput]) -> AppResult<(Vec<(&'static str
         given[i] += p.amount;
     }
     let [cash, card, wallet] = given;
-    if card + wallet > total {
-        return invalid("مبلغ البطاقة والمحفظة أكبر من الإجمالي، والباقي يُرد نقداً فقط");
+    if card + wallet > due {
+        return invalid("مبلغ البطاقة والمحفظة أكبر من المطلوب، والباقي يُرد نقداً فقط");
     }
     let paid = cash + card + wallet;
-    if paid < total {
-        return invalid("المبلغ المدفوع أقل من الإجمالي");
-    }
-    let change = paid - total;
+    let change = (paid - due).max(0);
     let covered = METHODS
         .into_iter()
         .zip([cash - change, card, wallet])
@@ -207,7 +240,7 @@ fn settle(total: i64, payments: &[PaymentInput]) -> AppResult<(Vec<(&'static str
     Ok((covered, paid))
 }
 
-fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
+pub fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
     let mut sale = db
         .query_row(
             "SELECT s.id, s.created_at, u.name, s.total, s.paid, s.change_due,
@@ -229,6 +262,7 @@ fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
                     change_due: r.get(5)?,
                     items: vec![],
                     extras: vec![],
+                    credit: None,
                 })
             },
         )
@@ -236,6 +270,7 @@ fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
         .ok_or(AppError::NotFound("الفاتورة"))?;
     sale.items = shop::load_items(db, id)?;
     sale.extras = extras::load_sale_extras(db, id)?;
+    sale.credit = credit::load(db, id)?;
     let mut stmt =
         db.prepare("SELECT method, amount FROM sale_payments WHERE sale_id = ?1 ORDER BY id")?;
     sale.payments = stmt
@@ -249,7 +284,7 @@ fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
     Ok(sale)
 }
 
-/// Cashiers may only open their own receipts.
+/// Cashiers may only open their own receipts, and any sale on credit (from the customers page).
 #[tauri::command]
 pub fn get_sale(state: State<AppState>, id: i64) -> AppResult<Sale> {
     let user = state.user()?;
@@ -260,7 +295,7 @@ pub fn get_sale(state: State<AppState>, id: i64) -> AppResult<Sale> {
                 r.get(0)
             })
             .optional()?;
-        if owner != Some(user.id) {
+        if owner != Some(user.id) && !credit::is_credit_sale(&db, id)? {
             return Err(AppError::Forbidden);
         }
     }
@@ -366,6 +401,7 @@ mod tests {
                 kind: kind.into(),
                 value,
             }),
+            ..Terms::default()
         }
     }
 

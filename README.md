@@ -7,7 +7,7 @@ own app, with its own name, look, database and updates.
 | Shop     | App                              | What it sells                                                    |
 | -------- | -------------------------------- | ---------------------------------------------------------------- |
 | `fish`   | Fish POS — نقطة بيع الأسماك      | fish by weight (per kg or fixed packs), with categories          |
-| `mobile` | Mobile POS — نقطة بيع الموبايلات | phones, one row per device by serial (IMEI / S/N), no categories |
+| `mobile` | Mobile POS — نقطة بيع الموبايلات | phones, one row per device by serial (IMEI / S/N), no categories; sells on credit |
 
 ## What every shop has
 
@@ -37,7 +37,15 @@ own app, with its own name, look, database and updates.
   it lets the shop set a new admin password.
 
 What only one shop has (products by weight and categories in fish, phones by serial in mobile) lives in
-that shop's folder. On first launch, the app asks you to create the admin account.
+that shop's folder.
+
+**Selling on credit (mobile):** at checkout, "بيع آجل" lets the customer pay part now, with one method or
+several, and owe the rest; the cashier takes their name and phone (a known phone fills the name). The
+**Customers** page, open to cashiers too, shows what each customer owes, on which invoices, what they
+bought, when and from whom, and takes later payments (25,000 = 15,000 + 5,000 + 5,000), each with one
+method or several. The whole sale counts as revenue on its day; the reports add what is still owed, what
+was collected, and a tab of the sales on credit. The engine is shared (`src-tauri/src/commands/credit.rs`);
+a shop turns it on with `CREDIT_SALES` in its Rust module and `creditSales` in its `index.ts`. On first launch, the app asks you to create the admin account.
 
 ## Development
 

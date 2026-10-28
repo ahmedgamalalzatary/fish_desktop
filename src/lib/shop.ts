@@ -128,6 +128,9 @@ export interface Shop {
   /** Columns of one invoice's lines, on screen and printed. */
   purchaseItemColumns: (purchase: Purchase) => Column<PurchaseItem>[];
   reportTabs: ReportTab<unknown>[];
+  /** Sells on credit: part paid now, the rest later. Adds the customers page and the checkout option;
+   *  the backend's `CREDIT_SALES` must match. */
+  creditSales?: true;
   /** Settings only this shop has, shown as their own section on the settings page. */
   SettingsSection?: ComponentType<{ draft: Settings; set: (key: string) => (value: string) => void }>;
 }

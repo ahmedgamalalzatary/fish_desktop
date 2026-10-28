@@ -64,4 +64,5 @@ export const shop: Shop = {
   usePurchaseLines,
   purchaseItemColumns,
   reportTabs,
+  creditSales: true,
 };

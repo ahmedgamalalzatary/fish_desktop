@@ -1,3 +1,4 @@
+import { creditReportTab } from "../../lib/credit";
 import { formatAmount, formatDateTime } from "../../lib/format";
 import { reportTab } from "../../lib/shop";
 import { api } from "./api";
@@ -51,6 +52,7 @@ export const reportTabs = [
       },
     ],
   }),
+  creditReportTab,
   reportTab({
     value: "stock",
     label: "المخزون",

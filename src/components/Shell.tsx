@@ -1,6 +1,7 @@
 import { shop } from "@shop";
 import {
   ChartColumnBig,
+  Contact,
   LogOut,
   Settings,
   ShoppingBasket,
@@ -20,6 +21,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const nav: NavItem[] = [
     { to: "/pos", label: "البيع", icon: ShoppingBasket, cashier: true },
     { to: "/expenses", label: "المصروفات", icon: WalletMinimal, cashier: true },
+    ...(shop.creditSales ? [{ to: "/customers", label: "العملاء", icon: Contact, cashier: true as const }] : []),
     { to: "/reports", label: "التقارير", icon: ChartColumnBig },
     ...shop.navItems,
     { to: "/extras", label: shop.extras.title, icon: shop.extras.icon },

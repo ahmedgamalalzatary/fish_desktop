@@ -19,6 +19,9 @@ pub use migrations::MIGRATIONS;
 /// Kept from release 0.2.0, so installed shops keep their data.
 pub const DB_FILE: &str = "fish-pos.db";
 
+/// Every sale is paid in full (see `commands::credit`).
+pub const CREDIT_SALES: bool = false;
+
 /// Settings this shop adds to the shared ones.
 pub const SETTINGS_KEYS: &[&str] = &["allow_negative_stock"];
 

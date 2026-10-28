@@ -45,7 +45,12 @@ pub struct Summary {
     purchases_cost: i64,
     purchases_units: i64,
     supplier_paid: i64,
+    /// Money taken in by method: at the sales of the period, and later payments on credit made in it.
     by_payment: Vec<PaymentTotal>,
+    /// Still owed now on the sales on credit made in the period (shops that sell on credit).
+    credit_owed: i64,
+    /// Paid in the period towards sales on credit.
+    credit_collected: i64,
 }
 
 #[tauri::command]
@@ -84,8 +89,9 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         [&from, &to],
         |r| r.get(0),
     )?;
-    // A split sale counts once under each method it used; the amounts still add up to the revenue.
-    let by_payment = query(
+    // A split sale counts once under each method it used; the amounts still add up to the revenue,
+    // less what is still owed on credit, plus what came in later on credit.
+    let mut by_payment = query(
         &db,
         "SELECT p.method, COUNT(*), SUM(p.amount) FROM sale_payments p JOIN sales s ON s.id = p.sale_id
          WHERE date(s.created_at) BETWEEN ?1 AND ?2 GROUP BY p.method ORDER BY SUM(p.amount) DESC",
@@ -98,6 +104,18 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
             })
         },
     )?;
+    let credit = super::credit::summary(&db, &from, &to)?;
+    for (method, count, total) in credit.by_method {
+        match by_payment.iter_mut().find(|p| p.method == method) {
+            Some(p) => (p.count, p.total) = (p.count + count, p.total + total),
+            None => by_payment.push(PaymentTotal {
+                method,
+                count,
+                total,
+            }),
+        }
+    }
+    by_payment.sort_by_key(|p| std::cmp::Reverse(p.total));
     Ok(Summary {
         sales_count,
         revenue,
@@ -111,6 +129,8 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
         purchases_units,
         supplier_paid,
         by_payment,
+        credit_owed: credit.owed,
+        credit_collected: credit.collected,
     })
 }
 

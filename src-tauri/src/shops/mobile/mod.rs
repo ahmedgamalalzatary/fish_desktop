@@ -18,6 +18,9 @@ pub use migrations::MIGRATIONS;
 /// Kept from release 0.4.0, so installed shops keep their data.
 pub const DB_FILE: &str = "phones.db";
 
+/// Sells on credit: part paid now, the rest later (see `commands::credit`).
+pub const CREDIT_SALES: bool = true;
+
 /// Settings this shop adds to the shared ones.
 pub const SETTINGS_KEYS: &[&str] = &[];
 

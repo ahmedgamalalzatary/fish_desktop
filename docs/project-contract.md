@@ -46,6 +46,7 @@ A build always targets exactly one shop. There is no default shop.
 | Sales | Server-priced cart; cash/card/wallet; any mix; cash-only change; `sale_payments` rows |
 | Receipts | 80 mm layout, on-screen preview, print, PDF; today's invoices list and reprint |
 | Expenses | Record under the signed-in user; admin sees all; cashier sees own today |
+| Credit sales (mobile) | Shops with `CREDIT_SALES` / `creditSales`: part paid at checkout, customer's name and phone kept, later payments (each with one or several methods) on the customers page, open to cashiers; a reports tab of sales on credit |
 | Employees | List/add/edit/deactivate users; roles; last-admin and self protections |
 | Suppliers | Add/edit/archive; opening balance; payments; statement with running balance; balance |
 | Purchases | Supplier invoice; full/partial/deferred payment; stock in; guarded delete |
@@ -170,6 +171,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `pages/ResetPasswordPage.tsx` | Forgotten admin password: reset code with copy, owner's reply, pick admin, new password |
 | `pages/EmployeesPage.tsx` | User list and form; roles, activity, password |
 | `pages/ExpensesPage.tsx` | Record/filter/delete expenses; totals and print |
+| `pages/CustomersPage.tsx` | Credit shops: customers (search, owing/all), a customer's invoices on credit with every payment, later payment modal (several methods), receipt |
+| `lib/credit.tsx` | `creditReportTab`: the sales-on-credit reports tab a credit shop lists in its `reportTabs` |
 | `pages/PurchasesPage.tsx` | Invoices and suppliers tabs, purchase form/detail, payments, statements |
 | `pages/ReportsPage.tsx` | All report tabs, chart, profit statement, print/PDF |
 | `pages/SettingsPage.tsx` | Shop details + preview, shop section, password, backup, updates |
@@ -244,7 +247,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `src/commands/users.rs` | User CRUD with uniqueness and last-admin rules |
 | `src/commands/suppliers.rs` | Supplier CRUD, balance SQL, payments, statement |
 | `src/commands/purchases.rs` | Purchase creation, summary/list/get, guarded removal |
-| `src/commands/sales.rs` | Sale settlement, insert, load, list with role limits |
+| `src/commands/sales.rs` | Sale settlement (`settle`, and `settle_part` for payments that may fall short), discount, `sell`, load, list with role limits |
+| `src/commands/credit.rs` | Selling on credit: `MIGRATION`, customers by phone, `open` a sale on credit, later payments, what is left, summary figures, credit report; refuses in shops without `CREDIT_SALES` |
 | `src/commands/expenses.rs` | Expense create/query/list/delete with role limits |
 | `src/commands/settings.rs` | Known-key settings read/write, backup |
 | `src/commands/reports.rs` | Summary, daily, periods, purchased items, cashier, supplier reports |
@@ -340,8 +344,9 @@ Shared code talks to a shop only through `src-tauri/src/shops/<shop>/mod.rs`:
 | Export | Used by | Fish | Mobile |
 | --- | --- | --- | --- |
 | `DB_FILE: &str` | `lib.rs` (`app.data_dir().join(DB_FILE)`) | `"fish-pos.db"` | `"phones.db"` |
-| `MIGRATIONS: &[&str]` | `db::open` → `db::migrate` | 4 migrations | 1 migration |
+| `MIGRATIONS: &[&str]` | `db::open` → `db::migrate` | 7 migrations | 4 migrations |
 | `SETTINGS_KEYS: &[&str]` | `commands/settings.rs` | `["allow_negative_stock"]` | `[]` |
+| `CREDIT_SALES: bool` | `commands/sales.rs`, `commands/credit.rs`, summary report | `false` | `true` (and lists `credit::MIGRATION`) |
 | `sales::{Cart, Priced { total, cost }, price(), record()}` | `commands/sales.rs` | weight/variant cart | phone id vector |
 | `sales::{SaleItem, load_items()}` | receipt | product name, variant label, quantity, grams, prices | model, serial, storage, colour, battery, price |
 | `purchases::{Lines, total(), record(), PurchaseItem, load_items()}` | `commands/purchases.rs` | grams + cost per line | one phone per line |
@@ -370,6 +375,7 @@ Every shop's migrations must satisfy `db::tests::has_the_shared_tables` (see §8
 | `usePurchaseLines(productId?)` | hook → `PurchaseForm` | purchase form |
 | `purchaseItemColumns(purchase)` | `Column<PurchaseItem>[]` | invoice detail/print |
 | `reportTabs` | `ReportTab<unknown>[]` | reports page |
+| `creditSales?` | `true` | customers page and route, checkout "بيع آجل", credit summary figures; mobile sets it and lists `creditReportTab` |
 | `SettingsSection?` | component `{ draft, set }` | settings page (fish only) |
 
 `Units` fields: `noun` (plural with article), `product` (one product's name), `perUnit` (average
@@ -413,13 +419,20 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
   - No user → `LoginPage` (`firstRun = needsSetup`) + `StartupUpdate`.
   - Signed in → `SessionProvider` (loads settings; renders nothing until loaded) → `HashRouter` →
     `Shell` → routes.
-- Routes: `/pos` (shop PosPage), `/expenses`. Admin-only: `/reports`, every `shop.adminRoutes` entry,
+- Routes: `/pos` (shop PosPage), `/expenses`, and `/customers` (`CustomersPage`) when the shop has
+  `creditSales`. Admin-only: `/reports`, every `shop.adminRoutes` entry,
   `/purchases`, `/employees`, `/settings`. Unknown → `/reports` for admin, `/pos` otherwise.
-- `Shell`: 92 px sidebar. Nav order = sales, expenses, reports, shop nav items, purchases, employees,
+- `Shell`: 92 px sidebar. Nav order = sales, expenses, customers (credit shops, cashiers too), reports, shop nav items, purchases, employees,
   settings. Cashiers see only `cashier: true` items. Header shows the first two words of the shop name.
   Admin sees `<UpdateBanner/>` above the page. Logout is in the sidebar footer.
 - `ActivationPage`: shop art; the device code (selectable, copy button); a box for the activation
   code (any case, spaces or dashes); errors in an alert box; success goes on to sign-in/setup.
+- `CustomersPage` (credit shops): the total owed; a list of customers (name, phone, owed or "مسدد")
+  with search by name or phone and owing/all; picking one shows their totals and each invoice on
+  credit: lines, total (after discount), payments in order (at the sale, then each later one with its
+  date, methods and who took it) and what is left; "الفاتورة" opens the receipt, "تسجيل دفعة" a modal
+  with cash/card/wallet amounts (only cash over what is left, given back as change) that records the
+  payment and shows the updated receipt.
 - `ResetPasswordPage`: back link to sign-in; the PC's reset code (selectable, copy button) and a box
   for the owner's reply; once accepted, a choice of active admin (name and username) and a new
   password with confirmation; success signs that admin in. Employees' passwords are reset by an admin
@@ -469,12 +482,16 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
   takes the keypad like a method: a fixed amount in the currency (up to the whole ticket) or a whole
   percent (1–100), switched by a small toggle; what is due becomes the ticket less the discount and
   every method row works from that. A discount that can't be given turns the readout into a warning
-  and blocks confirming. Confirming sends the cart, non-zero payment rows and the discount (or null),
+  and blocks confirming. In a credit shop a "بيع آجل" toggle below the methods stops the automatic
+  method (and clears the amounts): the cashier types what the customer pays now (may be nothing) with
+  any methods, then the customer's phone and name (leaving the phone fills the name of a known
+  customer); the readout shows what will be left on the customer and the button reads "تأكيد البيع
+  الآجل". Paid in full, it stays an ordinary sale. Confirming sends the cart, non-zero payment rows and the discount (or null),
   then shows the receipt. `TodaySalesModal` loads today's sales (backend limits
   cashiers to their own) with a total, list, receipt reopen and print.
 - **Receipt.** 72 mm content inside the 80 mm page. Shop name/address/phone, invoice number/time,
   shop item lines, then — when discounted — the subtotal and a "خصم" line (with the percent when it
-  was one), total, each payment (cash shows handed-over amount = covered + change), change row
+  was one), total, each payment at the sale (cash shows handed-over amount = covered + change), change row
   when positive, cashier, footer.
 - **ReportDocument.** RTL A4; letterhead; title; period (single day or range); generated timestamp;
   optional 4-column figures strip; sections with tables, totals and "no data" text.
@@ -583,8 +600,13 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 | `list_purchases` | from, to, supplier_id? | admin | summaries in date range, limit 2000 |
 | `get_purchase` | id | admin | summary + note + shop items |
 | `delete_purchase` | id | admin | shop removal, payments, invoice |
-| `create_sale` | items (shop cart), payments, discount `{ kind: fixed\|percent, value }` or null | signed in | sale; server pricing; discount checked (fixed 0 < value ≤ subtotal in cents, percent 1–100 rounded to the cent) and taken off before the payments are settled; transaction |
-| `get_sale` | id | signed in | sale; cashier only own |
+| `create_sale` | items (shop cart), payments, discount `{ kind: fixed\|percent, value }` or null, customer `{ name, phone }` or null (credit shops only; the payments must then fall short of the total) | signed in | sale; server pricing; discount checked (fixed 0 < value ≤ subtotal in cents, percent 1–100 rounded to the cent) and taken off before the payments are settled; transaction |
+| `get_sale` | id | signed in | sale; cashier only own, or any sale on credit |
+| `find_customer` | phone | signed in; credit shop | customer with that phone (normalized) or null |
+| `list_customers` | — | signed in; credit shop | `CustomerRow[]`: sales on credit, total, paid, owed, last sale; most owed first |
+| `customer_sales` | customer_id | signed in; credit shop | the customer's sales on credit (full `Sale`s), newest first |
+| `add_credit_payment` | sale_id, payments | signed in; credit shop | sale; pays towards what is left (may fall short; cash over it is change); refused when nothing is left or nothing paid |
+| `report_credit` | from, to | admin; credit shop | `CreditReportRow[]`: sales on credit made in the period with what is left now |
 | `list_sales` | from, to, user_id? | signed in | summaries; cashier forced today+self; limit 1000 |
 | `create_expense` | amount, reason | signed in | id; amount > 0; reason required; booked to caller |
 | `list_expenses` | from, to, user_id? | signed in | cashier forced today+self |
@@ -654,6 +676,14 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 - `Sale { id, created_at, cashier_name, subtotal, discount, discount_type, discount_value, total,
   payments, paid, change_due, items, extras }`; `total` = `subtotal − discount` is what was due.
 - `SaleSummary { id, created_at, cashier_name, total, discount, methods, items_count }`.
+- `Sale.credit: SaleCredit | null`; `SaleCredit { customer_id, customer_name, customer_phone, later:
+  LaterPayment[], remaining }`; `LaterPayment { id, created_at, user_name, paid, change_due, payments }`.
+- `CustomerInput { name, phone }`; `Customer { id, name, phone }`; `CustomerRow` adds `sales_count, total,
+  paid, owed, last_sale`; `CreditReportRow { sale_id, created_at, customer_id, customer_name,
+  customer_phone, cashier_name, total, paid, remaining }`.
+- `ReportSummary` also has `credit_owed` (left now on the period's sales on credit) and
+  `credit_collected` (later payments in the period); `by_payment` includes those later payments by
+  the day they came in, so it adds up to revenue − still owed + collected.
 - `Settings` = the five shared string keys + any extra string keys.
 - `ReportSummary { sales_count, revenue, discounts, cost, profit, units_sold, expenses, net_profit,
   purchases_cost, purchases_units, supplier_paid, by_payment[] }`.
@@ -777,7 +807,7 @@ CHECK ≥ 0`, `discount_type CHECK fixed/percent` (null when none), `discount_va
 percent). `total` stays what was due; the subtotal is `total + discount`. Lines keep their full prices,
 so per-product reports show sales before discounts; revenue and profit everywhere else are after them.
 
-### 8.2 Mobile schema (3 migrations)
+### 8.2 Mobile schema (4 migrations)
 
 - `users` — same as fish.
 - `products(id, name UNIQUE NOCASE, active DEFAULT 1, created_at, updated_at)`.
@@ -794,6 +824,13 @@ so per-product reports show sales before discounts; revenue and profit everywher
 - `expenses` — same as fish.
 - `settings` seeded with shop name محل الموبايلات and the same other defaults.
 - Migration 2 adds the shared extras (accessories); migration 3 the shared discount columns, as fish `007`.
+- Migration 4 — selling on credit (`commands::credit::MIGRATION`): `customers(id, name CHECK non-blank,
+  phone UNIQUE CHECK non-blank (digits, optional leading +), created_at)`; `credit_sales(sale_id PK →
+  sales, customer_id → customers)`; `credit_payments(id, sale_id → credit_sales, paid CHECK > 0,
+  change_due DEFAULT 0, user_id → users, created_at)`; `credit_payment_methods(id, payment_id →
+  credit_payments CASCADE, method CHECK cash/card/wallet, amount CHECK > 0)`; indexes on customer,
+  sale, payment date and payment. What is left on a sale = total − its `sale_payments` − its later
+  methods. The whole sale is revenue on its day; later payments are money in on theirs.
 - Partial unique index `phones(serial COLLATE NOCASE) WHERE status = 'in_stock'`; indexes for phones
   (product/status, purchase), sales date, payments, sale items (sale/product), movements
   (date/purchase), purchases (date/supplier), payments supplier, expenses date.
@@ -1191,6 +1228,12 @@ Use a copy of the shop fixture for upgrade checks and a fresh database for first
 - Sell by scanning (Enter) and by picking a phone; sold phone cannot be sold again.
 - Receipt prints each serial.
 - Take a phone out with a reason; it leaves stock and appears in movements.
+- Credit: a 25,000 phone with "بيع آجل", 10,000 card + 5,000 cash now, a new phone number and name →
+  receipt shows the customer and 10,000 left. Customers (as a cashier too): the customer owes 10,000;
+  pay 5,000 cash, then 3,000 wallet + 2,050 cash (50 change) → paid off, "مسددة", the receipt lists both
+  payments. The same phone at the next sale fills the name. Reports: the summary shows what is still
+  owed and collected, the payment-method table includes the later payments, the "البيع الآجل" tab lists
+  the invoice.
 - Purchase invoice with a sold/removed phone cannot be deleted.
 - Model with phones still in stock cannot be deleted.
 

@@ -163,4 +163,6 @@ CREATE INDEX idx_expenses_created ON expenses(created_at);
     crate::commands::extras::MIGRATION,
     // 3. A discount on the whole sale.
     crate::commands::sales::DISCOUNT_MIGRATION,
+    // 4. Selling on credit: customers, and payments after the day of sale.
+    crate::commands::credit::MIGRATION,
 ];

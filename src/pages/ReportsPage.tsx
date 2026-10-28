@@ -148,7 +148,8 @@ export function ReportsPage() {
       header: "المبلغ",
       numeric: true,
       cell: (r) => formatAmount(r.total),
-      total: formatAmount(s.revenue),
+      // The revenue, less what is still owed on credit, plus what came in later on credit.
+      total: formatAmount(sum(s.by_payment, (r) => r.total)),
     },
   ];
 
@@ -231,6 +232,12 @@ export function ReportsPage() {
     { label: "تكلفة البضاعة المباعة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
     { label: "الخصومات", value: formatMoney(s.discounts, currency) },
+    ...(shop.creditSales
+      ? [
+          { label: "متبقي على العملاء من مبيعات الفترة", value: formatMoney(s.credit_owed, currency) },
+          { label: "محصّل من البيع الآجل", value: formatMoney(s.credit_collected, currency) },
+        ]
+      : []),
     { label: `${units.noun} المشتراة`, value: units.count(s.purchases_units) },
     { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
     {

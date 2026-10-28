@@ -7,6 +7,7 @@ import { api } from "./lib/api";
 import { SessionProvider } from "./lib/session";
 import type { SessionUser } from "./lib/types";
 import { ActivationPage } from "./pages/ActivationPage";
+import { CustomersPage } from "./pages/CustomersPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { ExtrasPage } from "./pages/ExtrasPage";
@@ -58,6 +59,7 @@ export default function App() {
           <Routes>
             <Route path="/pos" element={<shop.PosPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
+            {shop.creditSales && <Route path="/customers" element={<CustomersPage />} />}
             {isAdmin && (
               <>
                 <Route path="/reports" element={<ReportsPage />} />
