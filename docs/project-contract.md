@@ -141,7 +141,8 @@ Everything below currently exists and is part of the project. `node_modules/`, `
 | `vite-env.d.ts` | Vite client types |
 | `components/ui.tsx` | Button, Input, Select, Field, Toggle, Segmented, Modal, ConfirmDialog, Keypad, Badge, PageHeader, Empty, Panel |
 | `components/DataTable.tsx` | Table with sticky header, numeric alignment, optional totals footer |
-| `components/Checkout.tsx` | PaymentPicker, CheckoutModal (split payments), ReceiptModal, TodaySalesModal |
+| `components/Checkout.tsx` | PaymentPicker, CheckoutModal (discount, split payments), ReceiptModal, TodaySalesModal |
+| `lib/discount.ts` | `discountAmount`: a typed discount's amount, rounded like the backend (tested) |
 | `components/Receipt.tsx` | 80 mm receipt layout; uses the shop's `ReceiptItems` |
 | `components/ReportDocument.tsx` | A4 print/PDF layout: letterhead, period, figures, sections |
 | `components/PeriodPicker.tsx` | Preset chips + custom date range |
@@ -364,7 +365,7 @@ Every shop's migrations must satisfy `db::tests::has_the_shared_tables` (see §8
 | `Readout` | component with label/value/unit/size/warn/className | till, checkout, purchases, reports |
 | `LoginArt` | component | sign-in left half |
 | `ReceiptItems` | component `{ items: SaleItem[] }` | receipt |
-| `sampleSale` | `Pick<Sale, "items" \| "total" \| "payments" \| "paid" \| "change_due">` | settings receipt preview |
+| `sampleSale` | `Pick<Sale, "items" \| "extras" \| "total" \| "payments" \| "paid" \| "change_due">` | settings receipt preview (no discount) |
 | `units` | `Units` | shared reports/invoices wording and quantity formatting |
 | `usePurchaseLines(productId?)` | hook → `PurchaseForm` | purchase form |
 | `purchaseItemColumns(purchase)` | `Column<PurchaseItem>[]` | invoice detail/print |
@@ -464,11 +465,16 @@ the shop's product/row types. Shop folders also provide `types.ts`, `api.ts`, `t
 - **Checkout.** Payment picker for cash/card/wallet. `CheckoutModal` starts with the method chosen at
   the till as the automatic "rest" method; typing into it stops it being automatic. The automatic
   method covers whatever the others leave. Only non-cash overpayment is refused; cash may exceed and
-  change is shown. Cash suggestions round up to 50/100/200/500/1000. Confirming sends the cart and
-  non-zero payment rows, then shows the receipt. `TodaySalesModal` loads today's sales (backend limits
+  change is shown. Cash suggestions round up to 50/100/200/500/1000. A discount row above the methods
+  takes the keypad like a method: a fixed amount in the currency (up to the whole ticket) or a whole
+  percent (1–100), switched by a small toggle; what is due becomes the ticket less the discount and
+  every method row works from that. A discount that can't be given turns the readout into a warning
+  and blocks confirming. Confirming sends the cart, non-zero payment rows and the discount (or null),
+  then shows the receipt. `TodaySalesModal` loads today's sales (backend limits
   cashiers to their own) with a total, list, receipt reopen and print.
 - **Receipt.** 72 mm content inside the 80 mm page. Shop name/address/phone, invoice number/time,
-  shop item lines, total, each payment (cash shows handed-over amount = covered + change), change row
+  shop item lines, then — when discounted — the subtotal and a "خصم" line (with the percent when it
+  was one), total, each payment (cash shows handed-over amount = covered + change), change row
   when positive, cashier, footer.
 - **ReportDocument.** RTL A4; letterhead; title; period (single day or range); generated timestamp;
   optional 4-column figures strip; sections with tables, totals and "no data" text.
@@ -577,7 +583,7 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 | `list_purchases` | from, to, supplier_id? | admin | summaries in date range, limit 2000 |
 | `get_purchase` | id | admin | summary + note + shop items |
 | `delete_purchase` | id | admin | shop removal, payments, invoice |
-| `create_sale` | items (shop cart), payments | signed in | sale; server pricing; transaction |
+| `create_sale` | items (shop cart), payments, discount `{ kind: fixed\|percent, value }` or null | signed in | sale; server pricing; discount checked (fixed 0 < value ≤ subtotal in cents, percent 1–100 rounded to the cent) and taken off before the payments are settled; transaction |
 | `get_sale` | id | signed in | sale; cashier only own |
 | `list_sales` | from, to, user_id? | signed in | summaries; cashier forced today+self; limit 1000 |
 | `create_expense` | amount, reason | signed in | id; amount > 0; reason required; booked to caller |
@@ -587,9 +593,9 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 | `update_settings` | values map | admin | known keys only; trimmed; transaction |
 | `backup_database` | path | admin | deletes target then `VACUUM INTO` |
 | `export_pdf` | path, width, height, margin | signed in | WebView2 PrintToPdf |
-| `report_summary` | from, to | admin | totals, units, expenses, purchases, supplier paid, per-method |
+| `report_summary` | from, to | admin | totals (revenue after discounts, discounts given), units, expenses, purchases, supplier paid, per-method |
 | `report_daily` | from, to | admin | per-day count/revenue/profit |
-| `report_by_cashier` | from, to | admin | per-user count/revenue/profit/first/last |
+| `report_by_cashier` | from, to | admin | per-user count/revenue/profit/first/last/discounts |
 | `report_by_supplier` | from, to | admin | per-supplier period activity + current balance |
 | `report_periods` | from, to, group | admin | day/month/year rows; invalid group rejected |
 | `report_purchased_items` | from, to | admin | per-product received units/cost |
@@ -644,10 +650,12 @@ All commands are Tauri commands returning `AppResult<T>` (Arabic error on failur
 - `User extends SessionUser { active, created_at, sales_count }`.
 - `UserInput { name, username, role, active, password: string | null }`.
 - `PaymentInput { method, amount }`; `Payment { method, amount }`.
-- `Sale { id, created_at, cashier_name, total, payments, paid, change_due, items }`.
-- `SaleSummary { id, created_at, cashier_name, total, methods, items_count }`.
+- `DiscountInput { kind: "fixed" | "percent", value }` (cents, or a whole percent).
+- `Sale { id, created_at, cashier_name, subtotal, discount, discount_type, discount_value, total,
+  payments, paid, change_due, items, extras }`; `total` = `subtotal − discount` is what was due.
+- `SaleSummary { id, created_at, cashier_name, total, discount, methods, items_count }`.
 - `Settings` = the five shared string keys + any extra string keys.
-- `ReportSummary { sales_count, revenue, cost, profit, units_sold, expenses, net_profit,
+- `ReportSummary { sales_count, revenue, discounts, cost, profit, units_sold, expenses, net_profit,
   purchases_cost, purchases_units, supplier_paid, by_payment[] }`.
 - `DailyRow { day, sales_count, revenue, profit }`.
 - `PeriodGroup = "day" | "month" | "year"`; `PeriodRow { period, sales_count, units_sold, revenue,
@@ -762,7 +770,14 @@ indexes:
 `004` — `expenses(id, amount CHECK > 0, reason CHECK non-blank, user_id → users, created_at)` and its
 date index.
 
-### 8.2 Mobile schema (1 migration)
+`005` — weights and prices in grams; `006` — the shared extras (`commands::extras::MIGRATION`).
+
+`007` — discounts (`commands::sales::DISCOUNT_MIGRATION`, shared): `ALTER sales ADD discount DEFAULT 0
+CHECK ≥ 0`, `discount_type CHECK fixed/percent` (null when none), `discount_value` (cents, or the whole
+percent). `total` stays what was due; the subtotal is `total + discount`. Lines keep their full prices,
+so per-product reports show sales before discounts; revenue and profit everywhere else are after them.
+
+### 8.2 Mobile schema (3 migrations)
 
 - `users` — same as fish.
 - `products(id, name UNIQUE NOCASE, active DEFAULT 1, created_at, updated_at)`.
@@ -778,6 +793,7 @@ date index.
   added/purchase/sale/removed, cost_total, note, sale_id, purchase_id, user_id, created_at)`.
 - `expenses` — same as fish.
 - `settings` seeded with shop name محل الموبايلات and the same other defaults.
+- Migration 2 adds the shared extras (accessories); migration 3 the shared discount columns, as fish `007`.
 - Partial unique index `phones(serial COLLATE NOCASE) WHERE status = 'in_stock'`; indexes for phones
   (product/status, purchase), sales date, payments, sale items (sale/product), movements
   (date/purchase), purchases (date/supplier), payments supplier, expenses date.
@@ -794,7 +810,7 @@ shared commands read:
 | `suppliers` | id, name, phone, note, opening_balance, active, created_at |
 | `purchases` | id, supplier_id, invoice_no, total, note, user_id, created_at |
 | `supplier_payments` | id, supplier_id, purchase_id, amount, note, user_id, created_at |
-| `sales` | id, user_id, created_at, total, cost_total, paid, change_due |
+| `sales` | id, user_id, created_at, total, cost_total, paid, change_due, discount, discount_type, discount_value |
 | `sale_payments` | id, sale_id, method, amount |
 | `sale_items` | id, sale_id, product_id |
 | `products` | id, name |
@@ -1137,6 +1153,8 @@ Use a copy of the shop fixture for upgrade checks and a fresh database for first
    own today; reports/purchases/employees/settings are unreachable.
 4. Cash sale: more cash than due → change on screen and receipt.
 5. Split sale: card + wallet + cash → each method on the receipt; card+wallet over the total refused.
+   Discount: 10% and then a fixed 50 each lower what is due and print a "خصم" line; 101% or more than
+   the ticket is refused; the reports show the discounts in the summary, invoices and employees tabs.
 6. Receipt: preview shows name, address, phone, items, totals, cashier, footer; print and PDF work.
 7. Expenses: a cashier records one under their name; an admin sees it in reports.
 8. Suppliers: add with opening balance, pay, statement and balance add up; credit shown correctly.

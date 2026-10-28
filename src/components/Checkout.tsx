@@ -1,23 +1,25 @@
 import { shop } from "@shop";
 import type { Cart } from "@shop/types";
-import { Banknote, CreditCard, Smartphone, X } from "lucide-react";
+import { Banknote, CreditCard, Smartphone, Tag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { ExtraLine } from "../lib/extras";
 import { cx } from "../lib/cx";
+import { discountAmount } from "../lib/discount";
 import { section } from "../lib/document";
 import {
   formatAmount,
   formatDateTime,
   formatMoney,
   isoDate,
+  parseCount,
   parseMoney,
   paymentLabels,
   paymentNames,
 } from "../lib/format";
 import { useSession } from "../lib/session";
 import { errorMessage, useToast } from "../lib/toast";
-import type { PaymentMethod, Sale, SaleSummary } from "../lib/types";
+import type { DiscountInput, PaymentMethod, Sale, SaleSummary } from "../lib/types";
 import { ExportButtons } from "./ExportButtons";
 import { Receipt } from "./Receipt";
 import { ReportDocument } from "./ReportDocument";
@@ -60,7 +62,8 @@ export function PaymentPicker({
  * Takes the money, with one method or several. Each method is a row; the keypad types into the
  * selected one. The method chosen on the ticket covers whatever the others leave until the cashier
  * types into it, so with cash chosen, "15,000 by card and the rest cash" is: tap card, type 15000,
- * confirm. Only cash can be over the total, since change is given in cash.
+ * confirm. Only cash can be over the total, since change is given in cash. The discount row above
+ * them takes a fixed amount or a percent off the ticket first.
  */
 export function CheckoutModal({
   items,
@@ -74,7 +77,7 @@ export function CheckoutModal({
   items: Cart;
   /** Add-ons or accessories on the same sale. */
   extras: ExtraLine[];
-  /** Everything on the ticket: the shop's lines and the extras. */
+  /** Everything on the ticket: the shop's lines and the extras, before any discount. */
   total: number;
   payment: PaymentMethod;
   onDone: (sale: Sale) => void;
@@ -85,32 +88,42 @@ export function CheckoutModal({
   const [texts, setTexts] = useState<Record<PaymentMethod, string>>({ cash: "", card: "", wallet: "" });
   // The method that covers the rest; null once the cashier has typed into it.
   const [auto, setAuto] = useState<PaymentMethod | null>(payment);
-  const [active, setActive] = useState<PaymentMethod>(payment);
+  const [active, setActive] = useState<PaymentMethod | "discount">(payment);
+  const [discountKind, setDiscountKind] = useState<DiscountInput["kind"]>("fixed");
+  const [discountText, setDiscountText] = useState("");
   // A value that was filled in for the cashier is replaced, not appended to, by the next key.
   const [fresh, setFresh] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  const discount = discountText === "" ? 0 : discountAmount(total, discountKind, discountText);
+  const badDiscount = discount === null;
+  // What the customer owes, discount off.
+  const due = total - (discount ?? 0);
+
   const typed = (m: PaymentMethod) => (m === auto ? 0 : (parseMoney(texts[m]) ?? 0));
   const othersTotal = methods.reduce((s, m) => s + typed(m), 0);
-  const amountOf = (m: PaymentMethod) => (m === auto ? Math.max(total - othersTotal, 0) : typed(m));
+  const amountOf = (m: PaymentMethod) => (m === auto ? Math.max(due - othersTotal, 0) : typed(m));
   const shown = (m: PaymentMethod) =>
     m === auto ? (amountOf(m) ? String(amountOf(m) / 100) : "") : texts[m];
   const given = methods.reduce((s, m) => s + amountOf(m), 0);
   const nonCash = amountOf("card") + amountOf("wallet");
-  const remaining = total - given;
-  const tooMuchNonCash = nonCash > total;
-  const canConfirm = remaining <= 0 && !tooMuchNonCash && !busy;
-  const cashDue = Math.max(total - nonCash, 0);
+  const remaining = due - given;
+  const tooMuchNonCash = nonCash > due;
+  const canConfirm = remaining <= 0 && !tooMuchNonCash && !badDiscount && !busy;
+  const cashDue = Math.max(due - nonCash, 0);
 
-  const select = (m: PaymentMethod) => {
+  const select = (m: PaymentMethod | "discount") => {
     setActive(m);
     setFresh(true);
-    if (m !== auto && texts[m] === "" && remaining > 0)
+    if (m !== "discount" && m !== auto && texts[m] === "" && remaining > 0)
       setTexts((t) => ({ ...t, [m]: String(remaining / 100) }));
   };
-  const setText = (m: PaymentMethod, text: string) => {
-    setTexts((t) => ({ ...t, [m]: text }));
-    if (m === auto) setAuto(null);
+  const setText = (m: PaymentMethod | "discount", text: string) => {
+    if (m === "discount") setDiscountText(text);
+    else {
+      setTexts((t) => ({ ...t, [m]: text }));
+      if (m === auto) setAuto(null);
+    }
     setFresh(false);
   };
 
@@ -129,6 +142,12 @@ export function CheckoutModal({
         items,
         extras,
         methods.filter((m) => amountOf(m) > 0).map((m) => ({ method: m, amount: amountOf(m) })),
+        discount
+          ? {
+              kind: discountKind,
+              value: discountKind === "fixed" ? parseMoney(discountText)! : parseCount(discountText)!,
+            }
+          : null,
       );
       onDone(sale);
     } catch (e) {
@@ -137,15 +156,21 @@ export function CheckoutModal({
     }
   };
 
-  const status = tooMuchNonCash
-    ? { label: "البطاقة والمحفظة أكثر من المطلوب", value: nonCash - total, warn: true }
-    : remaining > 0
-      ? { label: "المتبقي", value: remaining, warn: false }
-      : {
-          label: remaining < 0 ? "الباقي للعميل" : "تم سداد المبلغ",
-          value: Math.abs(remaining),
-          warn: false,
-        };
+  const status = badDiscount
+    ? {
+        label: discountKind === "fixed" ? "الخصم أكبر من الإجمالي" : "نسبة الخصم من 1 إلى 100",
+        value: due,
+        warn: true,
+      }
+    : tooMuchNonCash
+      ? { label: "البطاقة والمحفظة أكثر من المطلوب", value: nonCash - due, warn: true }
+      : remaining > 0
+        ? { label: "المتبقي", value: remaining, warn: false }
+        : {
+            label: remaining < 0 ? "الباقي للعميل" : "تم سداد المبلغ",
+            value: Math.abs(remaining),
+            warn: false,
+          };
 
   return (
     <Modal
@@ -156,7 +181,7 @@ export function CheckoutModal({
         <>
           <span className="me-auto text-sm text-muted">
             {given > 0 &&
-              `المدفوع ${formatMoney(given, settings.currency)} من ${formatMoney(total, settings.currency)}`}
+              `المدفوع ${formatMoney(given, settings.currency)} من ${formatMoney(due, settings.currency)}`}
           </span>
           <Button tone="outline" onClick={onClose}>
             رجوع
@@ -176,11 +201,70 @@ export function CheckoutModal({
       >
         <div className="flex flex-col gap-3">
           <shop.Readout
-            label={`${status.label} · المطلوب ${formatAmount(total)}`}
+            label={`${status.label} · المطلوب ${formatAmount(due)}`}
             value={formatAmount(status.value)}
             unit={settings.currency}
             warn={status.warn}
           />
+          <div
+            className={cx(
+              "flex items-center gap-2 rounded-2xl border-2 bg-white pe-1 transition-colors",
+              active === "discount" ? "border-ink" : "border-transparent",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => select("discount")}
+              aria-pressed={active === "discount"}
+              className="flex h-14 flex-1 items-center gap-3 ps-4 text-start"
+            >
+              <Tag className={cx("size-5", active === "discount" ? "text-ink" : "text-muted")} />
+              <span className="font-medium">الخصم</span>
+              {discount ? (
+                <span className="text-xs text-muted">
+                  {formatAmount(total)} ← {formatAmount(due)}
+                </span>
+              ) : null}
+              <span
+                dir="ltr"
+                className={cx(
+                  "ms-auto font-display text-2xl font-light",
+                  discountText === "" && "text-line",
+                  badDiscount && "text-danger",
+                )}
+              >
+                {discountText === "" ? "0" : discountText}
+                {discountKind === "percent" ? "%" : ""}
+                {active === "discount" && !fresh && (
+                  <span className="ms-0.5 animate-pulse text-muted">|</span>
+                )}
+              </span>
+            </button>
+            <div className="w-28">
+              <Segmented
+                value={discountKind}
+                onChange={(kind) => {
+                  setDiscountKind(kind);
+                  setDiscountText("");
+                  select("discount");
+                }}
+                options={[
+                  { value: "fixed", label: settings.currency || "مبلغ" },
+                  { value: "percent", label: "%" },
+                ]}
+              />
+            </div>
+            {discountText !== "" && (
+              <Button
+                tone="ghost"
+                size="icon"
+                onClick={() => (setText("discount", ""), setActive("discount"))}
+                aria-label="مسح الخصم"
+              >
+                <X className="size-4" />
+              </Button>
+            )}
+          </div>
           <div role="radiogroup" aria-label="طرق الدفع" className="flex flex-col gap-2">
             {methods.map((m) => {
               const Icon = paymentIcons[m];
@@ -237,7 +321,11 @@ export function CheckoutModal({
           </p>
         </div>
         <div className="flex flex-col gap-3">
-          <Keypad value={fresh ? "" : texts[active]} onChange={(v) => setText(active, v)} maxDecimals={2} />
+          <Keypad
+            value={fresh ? "" : active === "discount" ? discountText : texts[active]}
+            onChange={(v) => setText(active, v)}
+            maxDecimals={active === "discount" && discountKind === "percent" ? 0 : 2}
+          />
           {active === "cash" && cashDue > 0 && (
             <div className="grid grid-cols-2 gap-2">
               <Button

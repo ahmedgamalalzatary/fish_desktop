@@ -112,6 +112,10 @@ export function SettingsPage() {
                 id: 1024,
                 created_at: "2026-01-01 12:30:00",
                 cashier_name: "الكاشير",
+                subtotal: shop.sampleSale.total,
+                discount: 0,
+                discount_type: null,
+                discount_value: null,
                 ...shop.sampleSale,
               }}
               settings={draft}

@@ -34,6 +34,12 @@ export interface PaymentInput {
   amount: number;
 }
 
+/** A discount on the whole sale: `value` is cents for "fixed", a whole percent (1–100) for "percent". */
+export interface DiscountInput {
+  kind: "fixed" | "percent";
+  value: number;
+}
+
 /** What one method covered of a sale, change already taken off. A sale's payments add up to its total. */
 export interface Payment {
   method: PaymentMethod;
@@ -44,6 +50,12 @@ export interface Sale {
   id: number;
   created_at: string;
   cashier_name: string;
+  /** What the lines add up to, before the discount. */
+  subtotal: number;
+  discount: number;
+  discount_type: DiscountInput["kind"] | null;
+  discount_value: number | null;
+  /** What was due: the subtotal less the discount. */
   total: number;
   payments: Payment[];
   /** Everything handed over, cash change included. */
@@ -59,6 +71,7 @@ export interface SaleSummary {
   created_at: string;
   cashier_name: string;
   total: number;
+  discount: number;
   methods: PaymentMethod[];
   items_count: number;
 }
@@ -72,7 +85,10 @@ export type Settings = Record<
 
 export interface ReportSummary {
   sales_count: number;
+  /** What was taken in, discounts already off. */
   revenue: number;
+  /** Given off the sales' full prices. */
+  discounts: number;
   cost: number;
   /** Revenue minus the cost of what was sold. */
   profit: number;
@@ -133,6 +149,7 @@ export interface CashierReportRow {
   profit: number;
   first_sale: string;
   last_sale: string;
+  discounts: number;
 }
 
 export interface Supplier {

@@ -199,4 +199,6 @@ ALTER TABLE products RENAME COLUMN cost_per_kg TO cost_per_gram;
 "#,
     // 6. Add-ons (salad, juice, water…), sold by the piece on the same sale.
     crate::commands::extras::MIGRATION,
+    // 7. A discount on the whole sale.
+    crate::commands::sales::DISCOUNT_MIGRATION,
 ];

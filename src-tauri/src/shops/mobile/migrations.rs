@@ -161,4 +161,6 @@ CREATE INDEX idx_expenses_created ON expenses(created_at);
 "#,
     // 2. Accessories (covers, screen protectors…), sold by the piece on the same sale.
     crate::commands::extras::MIGRATION,
+    // 3. A discount on the whole sale.
+    crate::commands::sales::DISCOUNT_MIGRATION,
 ];

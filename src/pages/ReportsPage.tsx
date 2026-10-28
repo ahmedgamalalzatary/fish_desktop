@@ -162,6 +162,12 @@ export function ReportsPage() {
     { header: "الدفع", cell: (r) => paymentNames(r.methods) },
     { header: "الأصناف", numeric: true, cell: (r) => r.items_count },
     {
+      header: "الخصم",
+      numeric: true,
+      cell: (r) => (r.discount ? formatAmount(r.discount) : "—"),
+      total: formatAmount(sum(data.sales, (r) => r.discount)),
+    },
+    {
       header: "الإجمالي",
       numeric: true,
       cell: (r) => formatAmount(r.total),
@@ -188,6 +194,12 @@ export function ReportsPage() {
       numeric: true,
       cell: (r) => formatAmount(r.profit),
       total: formatAmount(s.profit),
+    },
+    {
+      header: "الخصومات",
+      numeric: true,
+      cell: (r) => (r.discounts ? formatAmount(r.discounts) : "—"),
+      total: formatAmount(s.discounts),
     },
     {
       header: "متوسط الفاتورة",
@@ -218,6 +230,7 @@ export function ReportsPage() {
     },
     { label: "تكلفة البضاعة المباعة", value: formatMoney(s.cost, currency) },
     { label: "هامش الربح", value: margin(s.profit, s.revenue) },
+    { label: "الخصومات", value: formatMoney(s.discounts, currency) },
     { label: `${units.noun} المشتراة`, value: units.count(s.purchases_units) },
     { label: "مدفوع للموردين", value: formatMoney(s.supplier_paid, currency) },
     {

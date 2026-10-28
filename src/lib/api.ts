@@ -4,6 +4,7 @@ import type { ExtraLine } from "./extras";
 import type {
   CashierReportRow,
   DailyRow,
+  DiscountInput,
   Expense,
   PaymentInput,
   PeriodGroup,
@@ -74,8 +75,8 @@ export const api = {
   getPurchase: (id: number) => call<Purchase>("get_purchase", { id }),
   deletePurchase: (id: number) => call<void>("delete_purchase", { id }),
 
-  createSale: (items: Cart, extras: ExtraLine[], payments: PaymentInput[]) =>
-    call<Sale>("create_sale", { items, extras, payments }),
+  createSale: (items: Cart, extras: ExtraLine[], payments: PaymentInput[], discount: DiscountInput | null) =>
+    call<Sale>("create_sale", { items, extras, payments, discount }),
   getSale: (id: number) => call<Sale>("get_sale", { id }),
   listSales: (range: Range, userId: number | null = null) =>
     call<SaleSummary[]>("list_sales", { ...range, userId }),

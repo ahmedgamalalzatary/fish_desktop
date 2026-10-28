@@ -40,6 +40,18 @@ export function Receipt({ sale, settings }: { sale: Sale; settings: Settings }) 
       )}
 
       <div className="mt-1 border-t border-dashed border-black pt-1">
+        {sale.discount > 0 && (
+          <>
+            <div className="flex justify-between">
+              <span>المجموع</span>
+              <span>{formatAmount(sale.subtotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>خصم{sale.discount_type === "percent" && ` ${sale.discount_value}%`}</span>
+              <span>−{formatAmount(sale.discount)}</span>
+            </div>
+          </>
+        )}
         <div className="flex justify-between text-base font-bold">
           <span>الإجمالي</span>
           <span>

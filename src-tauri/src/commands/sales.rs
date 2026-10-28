@@ -7,6 +7,28 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+/// The discount columns, added to every shop's `sales` table by its migration list. `total` is what is
+/// due after the discount; the lines keep their full prices, so the subtotal is `total + discount`.
+pub const DISCOUNT_MIGRATION: &str = r#"
+ALTER TABLE sales ADD COLUMN discount INTEGER NOT NULL DEFAULT 0 CHECK (discount >= 0);
+-- How the cashier gave it: 'fixed' (`discount_value` in cents) or 'percent' (`discount_value` 1–100).
+ALTER TABLE sales ADD COLUMN discount_type TEXT CHECK (discount_type IN ('fixed', 'percent'));
+ALTER TABLE sales ADD COLUMN discount_value INTEGER;
+"#;
+
+/// A discount on the whole sale: `value` is cents for "fixed", a whole percent for "percent".
+#[derive(Deserialize, Clone)]
+pub struct DiscountInput {
+    kind: String,
+    value: i64,
+}
+
+/// How a sale is made, besides its lines and payments.
+#[derive(Default)]
+pub struct Terms {
+    pub discount: Option<DiscountInput>,
+}
+
 /// One way the customer paid. For cash, `amount` is what was handed over, change included.
 #[derive(Deserialize)]
 pub struct PaymentInput {
@@ -26,6 +48,12 @@ pub struct Sale {
     id: i64,
     created_at: String,
     cashier_name: String,
+    /// What the lines add up to, before the discount.
+    subtotal: i64,
+    discount: i64,
+    discount_type: Option<String>,
+    discount_value: Option<i64>,
+    /// What was due: the subtotal less the discount.
     total: i64,
     payments: Vec<Payment>,
     paid: i64,
@@ -42,6 +70,7 @@ pub struct SaleSummary {
     created_at: String,
     cashier_name: String,
     total: i64,
+    discount: i64,
     methods: Vec<String>,
     items_count: i64,
 }
@@ -52,16 +81,23 @@ pub fn create_sale(
     items: shop::Cart,
     extras: Vec<ExtraLine>,
     payments: Vec<PaymentInput>,
+    discount: Option<DiscountInput>,
 ) -> AppResult<Sale> {
     let user = state.user()?;
     let mut db = state.db.lock().unwrap();
-    let sale_id = insert_sale(&mut db, user.id, &items, &extras, &payments)?;
+    let sale_id = sell(
+        &mut db,
+        user.id,
+        &items,
+        &extras,
+        &payments,
+        &Terms { discount },
+    )?;
     load_sale(&db, sale_id)
 }
 
-/// Records a sale: the shop prices its cart from the database (never from the client) and writes its
-/// lines and stock changes, the extras the same way; the payments are checked and stored here.
-/// All or nothing.
+/// A sale with no discount.
+#[cfg(test)]
 pub fn insert_sale(
     db: &mut Connection,
     user_id: i64,
@@ -69,19 +105,49 @@ pub fn insert_sale(
     extra_lines: &[ExtraLine],
     payments: &[PaymentInput],
 ) -> AppResult<i64> {
+    sell(db, user_id, cart, extra_lines, payments, &Terms::default())
+}
+
+/// Records a sale: the shop prices its cart from the database (never from the client) and writes its
+/// lines and stock changes, the extras the same way; the discount and payments are checked and stored
+/// here. All or nothing.
+pub fn sell(
+    db: &mut Connection,
+    user_id: i64,
+    cart: &shop::Cart,
+    extra_lines: &[ExtraLine],
+    payments: &[PaymentInput],
+    terms: &Terms,
+) -> AppResult<i64> {
     if cart.is_empty() && extra_lines.is_empty() {
         return invalid("السلة فارغة");
     }
     let tx = db.transaction()?;
     let priced = shop::price(&tx, cart)?;
     let added = extras::price(&tx, extra_lines)?;
-    let (total, cost) = (priced.total + added.total, priced.cost + added.cost);
+    let (subtotal, cost) = (priced.total + added.total, priced.cost + added.cost);
+    let discount = terms
+        .discount
+        .as_ref()
+        .map(|d| discount_of(subtotal, d))
+        .transpose()?;
+    let total = subtotal - discount.unwrap_or(0);
     let (covered, paid) = settle(total, payments)?;
     let ts = now();
     tx.execute(
-        "INSERT INTO sales (user_id, created_at, total, cost_total, paid, change_due)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![user_id, ts, total, cost, paid, paid - total],
+        "INSERT INTO sales (user_id, created_at, total, cost_total, paid, change_due, discount, discount_type, discount_value)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            user_id,
+            ts,
+            total,
+            cost,
+            paid,
+            paid - total,
+            discount.unwrap_or(0),
+            terms.discount.as_ref().map(|d| &d.kind),
+            terms.discount.as_ref().map(|d| d.value),
+        ],
     )?;
     let sale_id = tx.last_insert_rowid();
     for (method, amount) in covered {
@@ -94,6 +160,18 @@ pub fn insert_sale(
     extras::record(&tx, sale_id, user_id, &ts, &added)?;
     tx.commit()?;
     Ok(sale_id)
+}
+
+/// What a discount takes off `subtotal`: a fixed amount up to the whole of it, or a whole percent of it
+/// rounded to the nearest cent.
+fn discount_of(subtotal: i64, d: &DiscountInput) -> AppResult<i64> {
+    match d.kind.as_str() {
+        "fixed" if d.value > 0 && d.value <= subtotal => Ok(d.value),
+        "fixed" => invalid("الخصم يجب أن يكون أكبر من صفر ولا يزيد عن إجمالي الفاتورة"),
+        "percent" if (1..=100).contains(&d.value) => Ok((subtotal * d.value + 50) / 100),
+        "percent" => invalid("نسبة الخصم يجب أن تكون من 1 إلى 100"),
+        _ => invalid("نوع خصم غير صحيح"),
+    }
 }
 
 const METHODS: [&str; 3] = ["cash", "card", "wallet"];
@@ -132,7 +210,8 @@ fn settle(total: i64, payments: &[PaymentInput]) -> AppResult<(Vec<(&'static str
 fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
     let mut sale = db
         .query_row(
-            "SELECT s.id, s.created_at, u.name, s.total, s.paid, s.change_due
+            "SELECT s.id, s.created_at, u.name, s.total, s.paid, s.change_due,
+                    s.discount, s.discount_type, s.discount_value
              FROM sales s JOIN users u ON u.id = s.user_id WHERE s.id = ?1",
             [id],
             |r| {
@@ -140,6 +219,10 @@ fn load_sale(db: &Connection, id: i64) -> AppResult<Sale> {
                     id: r.get(0)?,
                     created_at: r.get(1)?,
                     cashier_name: r.get(2)?,
+                    subtotal: r.get::<_, i64>(3)? + r.get::<_, i64>(6)?,
+                    discount: r.get(6)?,
+                    discount_type: r.get(7)?,
+                    discount_value: r.get(8)?,
                     total: r.get(3)?,
                     payments: vec![],
                     paid: r.get(4)?,
@@ -201,7 +284,7 @@ pub fn list_sales(
     };
     let db = state.db.lock().unwrap();
     let mut stmt = db.prepare(
-        "SELECT s.id, s.created_at, u.name, s.total,
+        "SELECT s.id, s.created_at, u.name, s.total, s.discount,
                 (SELECT GROUP_CONCAT(method) FROM sale_payments p WHERE p.sale_id = s.id),
                 (SELECT COUNT(*) FROM sale_items i WHERE i.sale_id = s.id)
                     + (SELECT COUNT(*) FROM sale_extras x WHERE x.sale_id = s.id)
@@ -215,11 +298,12 @@ pub fn list_sales(
             created_at: r.get(1)?,
             cashier_name: r.get(2)?,
             total: r.get(3)?,
+            discount: r.get(4)?,
             methods: r
-                .get::<_, Option<String>>(4)?
+                .get::<_, Option<String>>(5)?
                 .map(|m| m.split(',').map(String::from).collect())
                 .unwrap_or_default(),
-            items_count: r.get(5)?,
+            items_count: r.get(6)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -274,6 +358,85 @@ mod tests {
         assert_eq!(cost, 2_700_000);
         drop(db);
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn discount(kind: &str, value: i64) -> Terms {
+        Terms {
+            discount: Some(DiscountInput {
+                kind: kind.into(),
+                value,
+            }),
+        }
+    }
+
+    #[test]
+    fn a_discount_lowers_what_is_due_and_is_kept_with_the_sale() {
+        let (mut db, path) = crate::test_support::temp_db("sale-discount");
+        // 1,000.00 less 10%: 900.00 due, paid with exactly that.
+        let cart = testing::cart_worth(&db, &[(100_000, 60_000)]);
+        let id = sell(
+            &mut db,
+            1,
+            &cart,
+            &[],
+            &[pay("cash", 90_000)],
+            &discount("percent", 10),
+        )
+        .unwrap();
+        let sale = load_sale(&db, id).unwrap();
+        assert_eq!(
+            (sale.subtotal, sale.discount, sale.total, sale.change_due),
+            (100_000, 10_000, 90_000, 0)
+        );
+        assert_eq!(
+            (sale.discount_type.as_deref(), sale.discount_value),
+            (Some("percent"), Some(10))
+        );
+        assert_eq!(sale.payments[0].amount, 90_000);
+
+        // 50.00 off the next one; paying the full price would leave 50.00 change.
+        let cart = testing::cart_worth(&db, &[(100_000, 60_000)]);
+        let id = sell(
+            &mut db,
+            1,
+            &cart,
+            &[],
+            &[pay("cash", 100_000)],
+            &discount("fixed", 5_000),
+        )
+        .unwrap();
+        let sale = load_sale(&db, id).unwrap();
+        assert_eq!(
+            (sale.discount, sale.total, sale.change_due),
+            (5_000, 95_000, 5_000)
+        );
+        drop(db);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_discount_never_passes_the_subtotal_and_rounds_to_the_cent() {
+        let pct = |v| DiscountInput {
+            kind: "percent".into(),
+            value: v,
+        };
+        let fixed = |v| DiscountInput {
+            kind: "fixed".into(),
+            value: v,
+        };
+        assert_eq!(discount_of(999, &pct(10)).unwrap(), 100);
+        assert_eq!(discount_of(994, &pct(10)).unwrap(), 99);
+        assert_eq!(discount_of(1000, &pct(100)).unwrap(), 1000);
+        assert_eq!(discount_of(1000, &fixed(1000)).unwrap(), 1000);
+        assert!(discount_of(1000, &fixed(1001)).is_err());
+        assert!(discount_of(1000, &fixed(0)).is_err());
+        assert!(discount_of(1000, &pct(0)).is_err());
+        assert!(discount_of(1000, &pct(101)).is_err());
+        let other = DiscountInput {
+            kind: "coupon".into(),
+            value: 5,
+        };
+        assert!(discount_of(1000, &other).is_err());
     }
 
     #[test]

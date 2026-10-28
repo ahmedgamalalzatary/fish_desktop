@@ -15,7 +15,9 @@ own app, with its own name, look, database and updates.
   screen and expenses, and reprints their own receipts from today. Roles are enforced in the Rust
   backend on every command, not only in the UI.
 - **Sales:** pay with cash (with change), card or e-wallet, or a mix of them in one sale. Only cash can
-  be over the total. 80 mm thermal receipt.
+  be over the total. Anyone selling can give a discount on the whole sale, a fixed amount (50 ج.م) or a
+  percent (10%); it prints on the receipt and the reports show what was given, per invoice and per
+  employee. 80 mm thermal receipt.
 - **Purchases & suppliers:** a purchase invoice adds stock; pay in full, in part or on credit, and the
   unpaid part goes to the supplier's balance. Later payments, supplier statements, and deleting an
   invoice entered by mistake.

@@ -31,7 +31,10 @@ pub struct PaymentTotal {
 #[derive(Serialize)]
 pub struct Summary {
     sales_count: i64,
+    /// What was taken in, discounts already off.
     revenue: i64,
+    /// Given off the sales' full prices.
+    discounts: i64,
     cost: i64,
     /// Revenue minus the cost of the pieces sold.
     profit: i64,
@@ -49,11 +52,11 @@ pub struct Summary {
 pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppResult<Summary> {
     state.admin()?;
     let db = state.db.lock().unwrap();
-    let (sales_count, revenue, cost): (i64, i64, i64) = db.query_row(
-        "SELECT COUNT(*), COALESCE(SUM(total), 0), COALESCE(SUM(cost_total), 0)
+    let (sales_count, revenue, cost, discounts): (i64, i64, i64, i64) = db.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(total), 0), COALESCE(SUM(cost_total), 0), COALESCE(SUM(discount), 0)
          FROM sales WHERE date(created_at) BETWEEN ?1 AND ?2",
         [&from, &to],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
     )?;
     let units_sold: i64 = db.query_row(
         &format!(
@@ -98,6 +101,7 @@ pub fn report_summary(state: State<AppState>, from: String, to: String) -> AppRe
     Ok(Summary {
         sales_count,
         revenue,
+        discounts,
         cost,
         profit: revenue - cost,
         units_sold,
@@ -274,6 +278,7 @@ pub struct CashierRow {
     profit: i64,
     first_sale: String,
     last_sale: String,
+    discounts: i64,
 }
 
 #[tauri::command]
@@ -286,7 +291,8 @@ pub fn report_by_cashier(
     let db = state.db.lock().unwrap();
     query(
         &db,
-        "SELECT u.id, u.name, COUNT(*), SUM(s.total), SUM(s.total - s.cost_total), MIN(s.created_at), MAX(s.created_at)
+        "SELECT u.id, u.name, COUNT(*), SUM(s.total), SUM(s.total - s.cost_total), MIN(s.created_at), MAX(s.created_at),
+                SUM(s.discount)
          FROM sales s JOIN users u ON u.id = s.user_id
          WHERE date(s.created_at) BETWEEN ?1 AND ?2
          GROUP BY u.id ORDER BY SUM(s.total) DESC",
@@ -300,6 +306,7 @@ pub fn report_by_cashier(
                 profit: r.get(4)?,
                 first_sale: r.get(5)?,
                 last_sale: r.get(6)?,
+                discounts: r.get(7)?,
             })
         },
     )
